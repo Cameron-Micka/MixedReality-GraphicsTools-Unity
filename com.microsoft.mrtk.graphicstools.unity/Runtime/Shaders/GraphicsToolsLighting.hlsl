@@ -7,8 +7,7 @@
 #include "GraphicsToolsCommon.hlsl"
 
 /// <summary>
-/// PBR lighting modeled from: https://google.github.io/filament/Filament.html and
-/// https://blog.selfshadow.com/2014/08/12/physically-based-shading-at-siggraph-2014/
+/// Forked from: https://github.com/microsoft/MixedReality-GraphicsTools-Unreal/blob/public/0.4.x/GraphicsToolsProject/Plugins/GraphicsTools/Shaders/Common/GTLighting.ush
 /// </summary>
 
 half GTDistribution(half roughness,
@@ -119,12 +118,10 @@ half3 GTContributionSH(half3 baseColor,
 half3 GTContributionReflection(half3 baseColor,
                                half metallic,
                                half roughnessSq,
-                               TextureCube reflectionCube,
-                               SamplerState reflectionCubeSampler,
                                half3 reflectionVector)
 {
-    half lod = (GRAPHICS_TOOLS_REFLECTION_CUBE_MAX_MIP - half(1)) - (half(1) - log2(roughnessSq));
-    return reflectionCube.SampleLevel(reflectionCubeSampler, reflectionVector, lod).rgb * baseColor * max(metallic, half(0.5));
+    //half lod = (GRAPHICS_TOOLS_REFLECTION_CUBE_MAX_MIP - half(1)) - (half(1) - log2(roughnessSq));
+    //return reflectionCube.SampleLevel(reflectionCubeSampler, reflectionVector, lod).rgb * baseColor * max(metallic, half(0.5));
 }
 
 /// <summary>

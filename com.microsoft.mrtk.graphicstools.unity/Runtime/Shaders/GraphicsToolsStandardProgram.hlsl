@@ -140,7 +140,7 @@
 
 #include "GraphicsToolsCommon.hlsl"
 #include "GraphicsToolsStandardInput.hlsl"
-#include "GraphicsToolsLighting.hlsl"
+#include "GraphicsToolsLightingUnity.hlsl"
 
 /// <summary>
 /// Vertex shader entry point.
@@ -560,12 +560,12 @@ half4 PixelStage(Varyings input, bool facing : SV_IsFrontFace) : SV_Target
     // Normal calculation.
 #if defined(_NORMAL)
 #if defined(_URP)
-    half3 worldViewDir = normalize(GetWorldSpaceViewDir(input.worldPosition.xyz));
+    half3 cameraVector = normalize(GetWorldSpaceViewDir(input.worldPosition.xyz));
 #else
-    half3 worldViewDir = normalize(UnityWorldSpaceViewDir(input.worldPosition.xyz));
+    half3 cameraVector = normalize(UnityWorldSpaceViewDir(input.worldPosition.xyz));
  #endif
 #if defined(_REFLECTIONS) || defined(_ENVIRONMENT_COLORING)
-    half3 incident = -worldViewDir;
+    half3 incident = -cameraVector;
 #endif
     half3 worldNormal;
 
@@ -780,7 +780,7 @@ half4 PixelStage(Varyings input, bool facing : SV_IsFrontFace) : SV_Target
 #endif
     half diffuse = max(0.0, dot(worldNormal, directionalLightDirection.xyz));
 #if defined(_SPECULAR_HIGHLIGHTS)
-    half halfVector = max(0.0, dot(worldNormal, normalize(directionalLightDirection.xyz + worldViewDir)));
+    half halfVector = max(0.0, dot(worldNormal, normalize(directionalLightDirection.xyz + cameraVector)));
     half specular = saturate(pow(halfVector, _Shininess * pow(_Smoothness, 4.0)) * (_Smoothness * 2.0) * _Metallic);
 #else
     half specular = 0.0;
@@ -812,7 +812,7 @@ half4 PixelStage(Varyings input, bool facing : SV_IsFrontFace) : SV_Target
 
     // Fresnel lighting.
 #if defined(_FRESNEL)
-    half fresnel = 1.0 - saturate(abs(dot(worldViewDir, worldNormal)));
+    half fresnel = 1.0 - saturate(abs(dot(cameraVector, worldNormal)));
 #if defined(_RIM_LIGHT)
     half3 fresnelColor = _RimColor * pow(fresnel, _RimPower);
 #else
@@ -848,6 +848,21 @@ half4 PixelStage(Varyings input, bool facing : SV_IsFrontFace) : SV_Target
 #else
     output.rgb += fresnelColor * (1.0 - minProperty);
 #endif
+#endif
+
+#if defined(_DIRECTIONAL_LIGHT) || defined(_DISTANT_LIGHT)
+    // TODO - Cleanup...
+    output.rgb = GTContributionDefaultLit(albedo, 
+                                      _Metallic, 
+                                      0.5, 
+                                      1.0 - _Smoothness, 
+                                      worldNormal, 
+                                      1.0,
+                                      cameraVector, 
+                                      worldReflection,
+                                      directionalLightDirection,
+                                      half4(directionalLightColor, 1.0));
+    output.a = albedo.a;
 #endif
 
 #if defined(_EMISSION)
