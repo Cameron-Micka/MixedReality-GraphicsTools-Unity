@@ -6,21 +6,8 @@
 
 #include "GraphicsToolsLighting.hlsl"
 
-half3 GTGetSkySHDiffuse(half3 Normal)
-{
-    return half3(0,0,0); // TODO
-    //half4 NormalVector = half4(Normal, half(1));
-
-    //half3 Result;
-    //Result.x = dot(View.SkyIrradianceEnvironmentMap[0], NormalVector);
-    //Result.y = dot(View.SkyIrradianceEnvironmentMap[1], NormalVector);
-    //Result.z = dot(View.SkyIrradianceEnvironmentMap[2], NormalVector);
-
-    //// Max to avoid negative colors.
-    //return max(half3(0, 0, 0), Result);
-}
-
 half3 GTContributionDefaultLit(half3 BaseColor,
+                               half3 SkySHDiffuse,
                                half Metallic,
                                half Specular,
                                half Roughness,
@@ -36,21 +23,21 @@ half3 GTContributionDefaultLit(half3 BaseColor,
     half3 Result = half3(0, 0, 0);
 
 #if !GT_FULLY_ROUGH
-#if GT_ENABLE_SH
+#if defined(_SPHERICAL_HARMONICS)
     // Indirect (spherical harmonics)
-    //half3 SkySHDiffuse = GTGetSkySHDiffuse(Normal);
-    //Result += GTContributionSH(BaseColor,
-    //                           Metallic,
-    //                           Roughness,
-    //                           SkySHDiffuse,
-    //                           ResolvedView.SkyLightColor.rgb);
-#endif // GT_ENABLE_SH
+    Result += GTContributionSH(BaseColor,
+                               Metallic,
+                               Roughness,
+                               SkySHDiffuse);
+#else
+
+#endif // _SPHERICAL_HARMONICS
 
     // Indirect (reflection cube).
-    //Result += GTContributionReflection(BaseColor,
-    //                                   Metallic,
-    //                                   RoughnessSq,
-    //                                   ReflectionVector);
+    Result += GTContributionReflection(BaseColor,
+                                       Metallic,
+                                       RoughnessSq,
+                                       ReflectionVector);
 #else
     Result += BaseColor;
 #endif // GT_FULLY_ROUGH
@@ -65,7 +52,8 @@ half3 GTContributionDefaultLit(half3 BaseColor,
                                              DirectionalLightDirection,
                                              DirectionalLightColorIntensity);
 
-    half EnergyCompensation = half(1) + (half(1) - (Metallic * half(1.5 * Roughness)));
+    half EnergyCompensation = 1;//half(1) + (half(1) - (Metallic * half(1.5 * Roughness)));
+
     return Result * EnergyCompensation * AmbientOcclusion;
 }
 
