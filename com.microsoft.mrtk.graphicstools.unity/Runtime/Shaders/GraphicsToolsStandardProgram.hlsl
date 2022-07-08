@@ -140,6 +140,7 @@
 
 #include "GraphicsToolsCommon.hlsl"
 #include "GraphicsToolsStandardInput.hlsl"
+#include "GraphicsToolsLighting.hlsl"
 
 /// <summary>
 /// Vertex shader entry point.
