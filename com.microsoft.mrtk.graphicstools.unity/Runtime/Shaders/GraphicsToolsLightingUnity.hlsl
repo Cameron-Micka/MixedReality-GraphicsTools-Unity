@@ -9,7 +9,6 @@
 half3 GTContributionDefaultLit(half3 BaseColor,
                                half Metallic,
                                half Smoothness,
-                               half Specular,
                                half3 WorldNormal,
                                half3 CameraVector,
                                half3 DirectionalLightDirection,
@@ -17,8 +16,8 @@ half3 GTContributionDefaultLit(half3 BaseColor,
                                half3 SkySHDiffuse)
 {
     // 100% smooth surfaces do not exist.
-    half SmoothnessClamp = clamp(Smoothness, half1(0), half1(0.95));
-    half Roughness = half1(1) - SmoothnessClamp;
+    half SmoothnessClamp = clamp(Smoothness, half(0), half(0.9));
+    half Roughness = half(1) - SmoothnessClamp;
     half RoughnessSq = clamp(Roughness * Roughness, GRAPHICS_TOOLS_MIN_N_DOT_V, half(1));
 
     half3 Result = half3(0, 0, 0);
@@ -47,7 +46,7 @@ half3 GTContributionDefaultLit(half3 BaseColor,
     Result += GTContributionDirectionalLight(BaseColor,
                                              Metallic,
                                              RoughnessSq,
-                                             Specular,
+                                             half(1.0),
                                              WorldNormal,
                                              CameraVector,
                                              DirectionalLightDirection,
