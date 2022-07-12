@@ -113,7 +113,7 @@ namespace Microsoft.MixedReality.GraphicsTools.Editor
             public static readonly string[] lightModeNames = new string[] { "Unlit", "Lit - Directional", "Lit - Distant" };
             public static readonly string lightModeLitDirectional = "_DIRECTIONAL_LIGHT";
             public static readonly string lightModeLitDistant = "_DISTANT_LIGHT";
-            public static readonly GUIContent specularHighlights = new GUIContent("Specular Highlights", "Calculate Specular Highlights");
+            public static readonly GUIContent fullyRough = new GUIContent("Fully Rough", "TODO");
             public static readonly GUIContent sphericalHarmonics = new GUIContent("Spherical Harmonics", "Read From Spherical Harmonics Data for Ambient Light");
             public static readonly GUIContent reflections = new GUIContent("Reflections", "Calculate Glossy Reflections");
             public static readonly GUIContent refraction = new GUIContent("Refraction", "Calculate Refraction");
@@ -231,7 +231,7 @@ namespace Microsoft.MixedReality.GraphicsTools.Editor
         protected MaterialProperty metallic;
         protected MaterialProperty smoothness;
         protected MaterialProperty lightMode;
-        protected MaterialProperty specularHighlights;
+        protected MaterialProperty fullyRough;
         protected MaterialProperty sphericalHarmonics;
         protected MaterialProperty reflections;
         protected MaterialProperty refraction;
@@ -345,7 +345,7 @@ namespace Microsoft.MixedReality.GraphicsTools.Editor
             enableSSAA = FindProperty("_EnableSSAA", props);
             mipmapBias = FindProperty("_MipmapBias", props);
             lightMode = FindProperty("_DirectionalLight", props);
-            specularHighlights = FindProperty("_SpecularHighlights", props);
+            fullyRough = FindProperty("_FullyRough", props);
             sphericalHarmonics = FindProperty("_SphericalHarmonics", props);
             reflections = FindProperty("_Reflections", props);
             refraction = FindProperty("_Refraction", props);
@@ -460,7 +460,6 @@ namespace Microsoft.MixedReality.GraphicsTools.Editor
             // Cache old shader properties with potentially different names than the new shader.
             float? smoothness = GetFloatProperty(material, "_Glossiness");
             float? diffuse = GetFloatProperty(material, "_UseDiffuse");
-            float? specularHighlights = GetFloatProperty(material, "_SpecularHighlights");
             float? normalMap = null;
             Texture normalMapTexture = material.HasProperty("_BumpMap") ? material.GetTexture("_BumpMap") : null;
             float? emission = null;
@@ -498,7 +497,6 @@ namespace Microsoft.MixedReality.GraphicsTools.Editor
             if (!newShaderIsStandardCanvas)
             {
                 SetShaderFeatureActive(material, "_DIRECTIONAL_LIGHT", "_DirectionalLight", diffuse);
-                SetShaderFeatureActive(material, "_SPECULAR_HIGHLIGHTS", "_SpecularHighlights", specularHighlights);
             }
 
             SetShaderFeatureActive(material, "_NORMAL_MAP", "_EnableNormalMap", normalMap);
@@ -716,20 +714,19 @@ namespace Microsoft.MixedReality.GraphicsTools.Editor
 
             if ((LightMode)lightMode.floatValue != LightMode.Unlit)
             {
-                materialEditor.ShaderProperty(specularHighlights, Styles.specularHighlights, 2);
+                //materialEditor.ShaderProperty(fullyRough, Styles.fullyRough, 2);
+                materialEditor.ShaderProperty(sphericalHarmonics, Styles.sphericalHarmonics, 2);
             }
 
-            materialEditor.ShaderProperty(sphericalHarmonics, Styles.sphericalHarmonics);
-
-            materialEditor.ShaderProperty(reflections, Styles.reflections);
+            materialEditor.ShaderProperty(reflections, Styles.reflections, 2);
 
             if (PropertyEnabled(reflections))
             {
-                materialEditor.ShaderProperty(refraction, Styles.refraction, 2);
+                materialEditor.ShaderProperty(refraction, Styles.refraction, 4);
 
                 if (PropertyEnabled(refraction))
                 {
-                    materialEditor.ShaderProperty(refractiveIndex, Styles.refractiveIndex, 4);
+                    materialEditor.ShaderProperty(refractiveIndex, Styles.refractiveIndex, 6);
                 }
             }
 

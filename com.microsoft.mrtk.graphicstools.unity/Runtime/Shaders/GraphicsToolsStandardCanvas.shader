@@ -34,8 +34,8 @@ Shader "Graphics Tools/Standard Canvas"
 
         // Rendering options.
         [Enum(LightMode)] _DirectionalLight("Light Mode", Float) = 0.0 // "Unlit"
-        [Toggle(_SPECULAR_HIGHLIGHTS)] _SpecularHighlights("Specular Highlights", Float) = 1.0
-        [Toggle(_SPHERICAL_HARMONICS)] _SphericalHarmonics("Spherical Harmonics", Float) = 0.0
+        [Toggle(_FULLY_ROUGH)] _FullyRough("Fully Rough", Float) = 0.0
+        [Toggle(_SPHERICAL_HARMONICS)] _SphericalHarmonics("Spherical Harmonics", Float) = 1.0
         [Toggle(_REFLECTIONS)] _Reflections("Reflections", Float) = 0.0
         [Toggle(_REFRACTION)] _Refraction("Refraction", Float) = 0.0
         _RefractiveIndex("Refractive Index", Range(0.0, 3.0)) = 0.0

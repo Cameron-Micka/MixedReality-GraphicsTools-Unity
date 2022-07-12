@@ -85,7 +85,7 @@ half3 GTContributionDirectionalLight(half3 baseColor,
     half3 h = normalize(cameraVector + lightDirection);
     half NoL = saturate(dot(worldNormal, lightDirection));
 
-#if GRAPHICS_TOOLS_FULLY_ROUGH
+#if _FULLY_ROUGH
     half3 specularLobe = half3(0, 0, 0);
     half3 diffuseLobe = GTDiffuseLobe(baseColor);
 #else
@@ -99,7 +99,7 @@ half3 GTContributionDirectionalLight(half3 baseColor,
 
     half3 specularLobe = GTSpecularLobe(roughnessSq, NoV, NoL, NoH, LoH, NxH, fresnel);
     half3 diffuseLobe = GTDiffuseLobe(baseColor) * dielectric;
-#endif // GRAPHICS_TOOLS_FULLY_ROUGH
+#endif // _FULLY_ROUGH
 
     return ((diffuseLobe + specularLobe) * lightColorIntensity.rgb) * lightColorIntensity.a * NoL;
 }
@@ -112,15 +112,13 @@ half3 GTContributionSH(half3 baseColor,
 	return (skySHDiffuse * baseColor) * max(half(0.3), min(half(1) - metallic, half(1) - roughness));
 }
 
-#define GRAPHICS_TOOLS_REFLECTION_CUBE_MAX_MIP UNITY_SPECCUBE_LOD_STEPS
-
 half3 GTContributionReflection(half3 baseColor,
                                half metallic,
                                half roughnessSq,
                                half3 reflectionVector)
 {
 #if defined(_REFLECTIONS)
-    half lod = (GRAPHICS_TOOLS_REFLECTION_CUBE_MAX_MIP - half(1)) - (half(1) - log2(roughnessSq));
+    half lod = (UNITY_SPECCUBE_LOD_STEPS - half(1)) - (half(1) - log2(roughnessSq));
 #if defined(_URP)
     half4 data = SAMPLE_TEXTURECUBE_LOD(unity_SpecCube0, samplerunity_SpecCube0, reflectionVector, lod);
     return DecodeHDREnvironment(data, unity_SpecCube0_HDR) * baseColor * max(metallic, half(0.1));

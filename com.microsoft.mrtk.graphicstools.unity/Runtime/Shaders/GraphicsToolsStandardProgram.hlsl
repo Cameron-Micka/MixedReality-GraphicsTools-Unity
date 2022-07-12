@@ -24,7 +24,7 @@
 #pragma shader_feature_local _LOCAL_SPACE_TRIPLANAR_MAPPING
 #pragma shader_feature_local_fragment _USE_SSAA
 #pragma shader_feature_local _ _DIRECTIONAL_LIGHT _DISTANT_LIGHT
-#pragma shader_feature_local_fragment _SPECULAR_HIGHLIGHTS
+#pragma shader_feature_local_fragment _FULLY_ROUGH
 #pragma shader_feature_local _SPHERICAL_HARMONICS
 #pragma shader_feature_local _REFLECTIONS
 #pragma shader_feature_local_fragment _REFRACTION
@@ -502,7 +502,6 @@ half4 PixelStage(Varyings input, bool facing : SV_IsFrontFace) : SV_Target
 #if defined(_BORDER_LIGHT) || defined(_ROUND_CORNERS)
     float2 halfScale = input.scale.xy * 0.5;
     float2 cornerPosition = distanceToEdge * halfScale;
-
     half currentCornerRadius;
 
     // Rounded corner clipping.
@@ -564,9 +563,6 @@ half4 PixelStage(Varyings input, bool facing : SV_IsFrontFace) : SV_Target
 #else
     half3 cameraVector = normalize(UnityWorldSpaceViewDir(input.worldPosition.xyz));
  #endif
-#if defined(_REFLECTIONS) || defined(_ENVIRONMENT_COLORING)
-    half3 incident = -cameraVector;
-#endif
     half3 worldNormal;
 
 #if defined(_NORMAL_MAP)
@@ -763,25 +759,40 @@ half4 PixelStage(Varyings input, bool facing : SV_IsFrontFace) : SV_Target
     albedo.a = 1.0;
 #endif
 
-    half4 output = albedo;
+    // TODO FIX FRESNEL and UNLIT REFLECTIONS
+    half3 lighting = half3(0, 0, 0);
 
     // Direct and indirect lighting.
-#if defined(_DIRECTIONAL_LIGHT) || defined(_DISTANT_LIGHT)
-    GTLight light = GTGetMainLight();
+#if defined(_DIRECTIONAL_LIGHT) || defined(_DISTANT_LIGHT) || defined(_SPHERICAL_HARMONICS) || defined(_REFLECTIONS)
+    half smoothnessClamped = clamp(_Smoothness, half(0), half(0.95)); // 100% smooth surfaces do not exist.
+    half roughness = half(1) - smoothnessClamped;
+    half roughnessSq = clamp(roughness * roughness, GRAPHICS_TOOLS_MIN_N_DOT_V, half(1));
+
+#if defined(_DIRECTIONAL_LIGHT) || defined(_DISTANT_LIGHT) 
+    // Direct (directional light).
+    GTMainLight light = GTGetMainLight();
+    lighting += GTContributionDirectionalLight(albedo, _Metallic, roughnessSq, half(1.0), worldNormal, cameraVector, light.direction, half4(light.color, 1.0)) * half(4);
+
+#if !defined(_FULLY_ROUGH)
 #if defined(_SPHERICAL_HARMONICS)
     half3 ambientLight = input.ambient;
 #else
     half3 ambientLight = glstate_lightmodel_ambient.rgb + half3(0.25, 0.25, 0.25);
 #endif
 
-    output.rgb = GTContributionDefaultLit(albedo,
-                                      _Metallic,
-                                      _Smoothness,
-                                      worldNormal,
-                                      cameraVector,
-                                      light.direction,
-                                      half4(light.color, 1.0),
-                                      ambientLight);
+    // Indirect (spherical harmonics).
+    half energyCompensation = 1.25 + (2.75 * min(smoothnessClamped, roughnessSq));
+    lighting += GTContributionSH(albedo, _Metallic, roughnessSq, ambientLight) * energyCompensation;
+#endif
+
+#if defined(_REFLECTIONS) && !defined(_FULLY_ROUGH)
+    // Indirect (reflection cube).
+    half3 worldReflection = reflect(-cameraVector, worldNormal);
+    lighting += GTContributionReflection(albedo, _Metallic, roughnessSq, worldReflection) * smoothnessClamped;
+#endif
+#endif
+#else
+    lighting = albedo.rgb;
 #endif
 
     // Fresnel lighting.
@@ -789,13 +800,10 @@ half4 PixelStage(Varyings input, bool facing : SV_IsFrontFace) : SV_Target
     half fresnel = 1.0 - saturate(abs(dot(cameraVector, worldNormal)));
 #if defined(_RIM_LIGHT)
     half3 fresnelColor = _RimColor * pow(fresnel, _RimPower);
+    lighting += fresnelColor;
 #else
-    half3 fresnelColor = unity_IndirectSpecColor.rgb * (pow(fresnel, _FresnelPower) * max(_Smoothness, 0.5));
-#endif
-#if defined(_RIM_LIGHT) || !defined(_REFLECTIONS)
-    output.rgb += fresnelColor;
-#else
-    output.rgb += fresnelColor * max(_Smoothness, _Metallic);
+    half3 fresnelColor = unity_IndirectSpecColor.rgb * (pow(fresnel, half(8.0)) * max(_Smoothness, 0.5));
+    lighting += fresnelColor * max(_Smoothness, _Metallic);
 #endif
 #endif
 
@@ -808,26 +816,29 @@ half4 PixelStage(Varyings input, bool facing : SV_IsFrontFace) : SV_Target
     emission *= emissionMap;
 #endif
 #if defined(_CHANNEL_MAP)
-    output.rgb += emission * channel.b;
+    lighting += emission * channel.b;
 #else
-    output.rgb += emission;
+    lighting += emission;
 #endif
 #endif
 
     // Inner glow.
 #if defined(_INNER_GLOW)
     half2 uvGlow = pow(abs(distanceToEdge * _InnerGlowColor.a), _InnerGlowPower);
-    output.rgb += lerp(half3(0.0, 0.0, 0.0), _InnerGlowColor.rgb, uvGlow.x + uvGlow.y);
+    lighting += lerp(half3(0.0, 0.0, 0.0), _InnerGlowColor.rgb, uvGlow.x + uvGlow.y);
 #endif
 
     // Environment coloring.
 #if defined(_ENVIRONMENT_COLORING)
+    half3 incident = -cameraVector;
     half3 environmentColor = incident.x * incident.x * _EnvironmentColorX +
                               incident.y * incident.y * _EnvironmentColorY +
                               incident.z * incident.z * _EnvironmentColorZ;
-    output.rgb += environmentColor * max(0.0, dot(incident, worldNormal) + _EnvironmentColorThreshold) * _EnvironmentColorIntensity;
+    lighting += environmentColor * max(0.0, dot(incident, worldNormal) + _EnvironmentColorThreshold) * _EnvironmentColorIntensity;
 
 #endif
+
+    half4 output = half4(lighting, albedo.a);
 
 #if defined(_NEAR_PLANE_FADE)
     output *= input.worldPosition.w;
