@@ -7,39 +7,40 @@
 #include "GraphicsToolsLighting.hlsl"
 
 half3 GTContributionDefaultLit(half3 BaseColor,
-                               half3 SkySHDiffuse,
                                half Metallic,
+                               half Smoothness,
                                half Specular,
-                               half Roughness,
-                               half3 Normal,
-                               half AmbientOcclusion,
+                               half3 WorldNormal,
                                half3 CameraVector,
-                               half3 ReflectionVector,
                                half3 DirectionalLightDirection,
-                               half4 DirectionalLightColorIntensity)
+                               half4 DirectionalLightColorIntensity,
+                               half3 SkySHDiffuse)
 {
+    // 100% smooth surfaces do not exist.
+    half SmoothnessClamp = clamp(Smoothness, half1(0), half1(0.95));
+    half Roughness = half1(1) - SmoothnessClamp;
     half RoughnessSq = clamp(Roughness * Roughness, GRAPHICS_TOOLS_MIN_N_DOT_V, half(1));
 
     half3 Result = half3(0, 0, 0);
 
 #if !GT_FULLY_ROUGH
-#if defined(_SPHERICAL_HARMONICS)
     // Indirect (spherical harmonics)
+    half EnergyCompensation = 1.25 + (2.75 * min(SmoothnessClamp, RoughnessSq));
     Result += GTContributionSH(BaseColor,
                                Metallic,
-                               Roughness,
-                               SkySHDiffuse);
-#else
+                               RoughnessSq,
+                               SkySHDiffuse) * EnergyCompensation;
 
-#endif // _SPHERICAL_HARMONICS
-
+#if defined(_REFLECTIONS)
     // Indirect (reflection cube).
+    half3 WorldReflection = reflect(-CameraVector, WorldNormal);
     Result += GTContributionReflection(BaseColor,
                                        Metallic,
                                        RoughnessSq,
-                                       ReflectionVector);
+                                       WorldReflection) * SmoothnessClamp;
+#endif // _REFLECTIONS
 #else
-    Result += BaseColor;
+    Result += BaseColor * 0.1;
 #endif // GT_FULLY_ROUGH
 
     // Direct (directional light).
@@ -47,14 +48,12 @@ half3 GTContributionDefaultLit(half3 BaseColor,
                                              Metallic,
                                              RoughnessSq,
                                              Specular,
-                                             Normal,
+                                             WorldNormal,
                                              CameraVector,
                                              DirectionalLightDirection,
-                                             DirectionalLightColorIntensity);
+                                             DirectionalLightColorIntensity) * 4;
 
-    half EnergyCompensation = 1;//half(1) + (half(1) - (Metallic * half(1.5 * Roughness)));
-
-    return Result * EnergyCompensation * AmbientOcclusion;
+    return Result;
 }
 
 #endif // GT_LIGHTING_UNITY

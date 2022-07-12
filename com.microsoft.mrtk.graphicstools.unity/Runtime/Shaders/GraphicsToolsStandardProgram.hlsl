@@ -853,16 +853,14 @@ half4 PixelStage(Varyings input, bool facing : SV_IsFrontFace) : SV_Target
 #if defined(_DIRECTIONAL_LIGHT) || defined(_DISTANT_LIGHT)
     // TODO - Cleanup...
     output.rgb = GTContributionDefaultLit(albedo,
-                                       ambient,
-                                      _Metallic, 
+                                      _Metallic,
+                                      _Smoothness,
                                       0.5,
-                                      1.0 - _Smoothness, 
-                                      worldNormal, 
-                                      1.0,
-                                      cameraVector, 
-                                      worldReflection,
+                                      worldNormal,
+                                      cameraVector,
                                       directionalLightDirection,
-                                      half4(directionalLightColor, 1.0));
+                                      half4(directionalLightColor, 1.0),
+                                      ambient);
     output.a = albedo.a;
 #endif
 
