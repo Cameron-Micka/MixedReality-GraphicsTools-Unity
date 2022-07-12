@@ -6,6 +6,33 @@
 
 #include "GraphicsToolsLighting.hlsl"
 
+struct GTLight
+{
+    half3 direction;
+    half3 color;
+};
+
+GTLight GTGetMainLight()
+{
+    GTLight light;
+#if defined(_DIRECTIONAL_LIGHT) || defined(_DISTANT_LIGHT)
+#if defined(_DISTANT_LIGHT)
+    light.direction = _DistantLightData[0].xyz;
+    light.color = _DistantLightData[1].xyz;
+#else
+#if defined(_URP)
+    Light directionalLight = GetMainLight();
+    light.direction = directionalLight.direction;
+    light.color = directionalLight.color;
+#else
+    light.direction = _WorldSpaceLightPos0.xyz;
+    light.color = _LightColor0.rgb;
+#endif
+#endif
+#endif
+    return light;
+}
+
 half3 GTContributionDefaultLit(half3 BaseColor,
                                half Metallic,
                                half Smoothness,
