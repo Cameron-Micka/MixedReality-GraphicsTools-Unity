@@ -761,6 +761,7 @@ half4 PixelStage(Varyings input, bool facing : SV_IsFrontFace) : SV_Target
 
     // TODO FIX FRESNEL and UNLIT REFLECTIONS
     half3 lighting = half3(0, 0, 0);
+    half3 reflectionColor = half3(0, 0, 0);
 
     // Direct and indirect lighting.
 #if defined(_DIRECTIONAL_LIGHT) || defined(_DISTANT_LIGHT) || defined(_SPHERICAL_HARMONICS) || defined(_REFLECTIONS)
@@ -771,7 +772,7 @@ half4 PixelStage(Varyings input, bool facing : SV_IsFrontFace) : SV_Target
 #if defined(_DIRECTIONAL_LIGHT) || defined(_DISTANT_LIGHT) 
     // Direct (directional light).
     GTMainLight light = GTGetMainLight();
-    lighting += GTContributionDirectionalLight(albedo, _Metallic, roughnessSq, half(1.0), worldNormal, cameraVector, light.direction, half4(light.color, 1.0)) * half(4);
+    lighting += GTContributionDirectionalLight(albedo, _Metallic, roughnessSq, half(1.0), worldNormal, cameraVector, light.direction, half4(light.color, 1.0)) * half(4.0);
 
 #if !defined(_FULLY_ROUGH)
 #if defined(_SPHERICAL_HARMONICS)
@@ -788,7 +789,8 @@ half4 PixelStage(Varyings input, bool facing : SV_IsFrontFace) : SV_Target
 #if defined(_REFLECTIONS) && !defined(_FULLY_ROUGH)
     // Indirect (reflection cube).
     half3 worldReflection = reflect(-cameraVector, worldNormal);
-    lighting += GTContributionReflection(albedo, _Metallic, roughnessSq, worldReflection) * smoothnessClamped;
+    reflectionColor = GTContributionReflection(roughnessSq, worldReflection) * smoothnessClamped;
+    lighting += reflectionColor * 0.1;
 #endif
 #endif
 #else
@@ -802,8 +804,9 @@ half4 PixelStage(Varyings input, bool facing : SV_IsFrontFace) : SV_Target
     half3 fresnelColor = _RimColor * pow(fresnel, _RimPower);
     lighting += fresnelColor;
 #else
-    half3 fresnelColor = unity_IndirectSpecColor.rgb * (pow(fresnel, half(8.0)) * max(_Smoothness, 0.5));
-    lighting += fresnelColor * max(_Smoothness, _Metallic);
+    lighting += reflectionColor * pow(fresnel, 1.4) * 0.5;
+    //half3 fresnelColor = unity_IndirectSpecColor.rgb * (pow(fresnel, half(8.0)) * max(_Smoothness, 0.5));
+    //lighting += fresnelColor * max(_Smoothness, _Metallic);
 #endif
 #endif
 

@@ -112,19 +112,17 @@ half3 GTContributionSH(half3 baseColor,
 	return (skySHDiffuse * baseColor) * max(half(0.3), min(half(1) - metallic, half(1) - roughness));
 }
 
-half3 GTContributionReflection(half3 baseColor,
-                               half metallic,
-                               half roughnessSq,
+half3 GTContributionReflection(half roughnessSq,
                                half3 reflectionVector)
 {
 #if defined(_REFLECTIONS)
     half lod = (UNITY_SPECCUBE_LOD_STEPS - half(1)) - (half(1) - log2(roughnessSq));
 #if defined(_URP)
     half4 data = SAMPLE_TEXTURECUBE_LOD(unity_SpecCube0, samplerunity_SpecCube0, reflectionVector, lod);
-    return DecodeHDREnvironment(data, unity_SpecCube0_HDR) * baseColor * max(metallic, half(0.1));
+    return DecodeHDREnvironment(data, unity_SpecCube0_HDR);
 #else
     half4 data = UNITY_SAMPLE_TEXCUBE_LOD(unity_SpecCube0, reflectionVector, lod);
-    return DecodeHDR(data, unity_SpecCube0_HDR) * baseColor * max(metallic, half(0.1));
+    return DecodeHDR(data, unity_SpecCube0_HDR);
 #endif // _URP
 #else
     return unity_IndirectSpecColor.rgb;
