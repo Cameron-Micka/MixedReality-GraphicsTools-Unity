@@ -759,7 +759,7 @@ half4 PixelStage(Varyings input, bool facing : SV_IsFrontFace) : SV_Target
     albedo.a = 1.0;
 #endif
 
-    // TODO FIX FRESNEL and UNLIT REFLECTIONS
+    // TODO FIX UNLIT REFLECTIONS
     half3 lighting = half3(0, 0, 0);
     half3 reflectionColor = half3(0, 0, 0);
 
@@ -782,15 +782,14 @@ half4 PixelStage(Varyings input, bool facing : SV_IsFrontFace) : SV_Target
 #endif
 
     // Indirect (spherical harmonics).
-    half energyCompensation = 1.25 + (2.75 * min(smoothnessClamped, roughnessSq));
-    lighting += GTContributionSH(albedo, _Metallic, roughnessSq, ambientLight) * energyCompensation;
+    lighting += GTContributionSH(albedo, _Metallic, roughnessSq, ambientLight);
 #endif
 
 #if defined(_REFLECTIONS) && !defined(_FULLY_ROUGH)
     // Indirect (reflection cube).
     half3 worldReflection = reflect(-cameraVector, worldNormal);
-    reflectionColor = GTContributionReflection(roughnessSq, worldReflection) * smoothnessClamped;
-    lighting += reflectionColor * 0.1;
+    reflectionColor = GTContributionReflection(roughnessSq, worldReflection) * (_Smoothness + _Metallic) / half(2.0);
+    lighting += reflectionColor  * half(0.5) * albedo;
 #endif
 #endif
 #else
