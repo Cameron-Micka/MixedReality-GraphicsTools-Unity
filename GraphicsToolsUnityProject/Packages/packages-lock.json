@@ -1,5 +1,11 @@
 {
   "dependencies": {
+    "com.microsoft.mixedreality.visualprofiler": {
+      "version": "file:D:/Cameron-Micka/MixedReality-GraphicsTools-Unity/com.microsoft.mixedreality.visualprofiler",
+      "depth": 0,
+      "source": "local",
+      "dependencies": {}
+    },
     "com.microsoft.mrtk.graphicstools.unity": {
       "version": "file:../../com.microsoft.mrtk.graphicstools.unity",
       "depth": 0,
