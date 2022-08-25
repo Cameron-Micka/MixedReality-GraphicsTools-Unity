@@ -4,6 +4,7 @@
 using System.Text;
 using UnityEngine;
 using UnityEngine.Profiling;
+using Unity.Profiling;
 
 #if UNITY_STANDALONE_WIN || UNITY_WSA
 using UnityEngine.Windows.Speech;
@@ -43,6 +44,8 @@ namespace Microsoft.MixedReality.Profiling
         private static readonly int frameRange = 30;
         private static readonly Vector2 defaultWindowRotation = new Vector2(10.0f, 20.0f);
         private static readonly Vector3 defaultWindowScale = new Vector3(0.2f, 0.04f, 1.0f);
+        private static readonly string drawPassCallString = "Draw/Pass: ";
+        private static readonly string verticiesString = "Verts: ";
         private static readonly string usedMemoryString = "Used: ";
         private static readonly string peakMemoryString = "Peak: ";
         private static readonly string limitMemoryString = "Limit: ";
@@ -134,6 +137,8 @@ namespace Microsoft.MixedReality.Profiling
         private GameObject window;
         private TextMesh cpuFrameRateText;
         private TextMesh gpuFrameRateText;
+        private TextMesh drawCallPassText;
+        private TextMesh verticiesText;
         private TextMesh usedMemoryText;
         private TextMesh peakMemoryText;
         private TextMesh limitMemoryText;
@@ -155,6 +160,9 @@ namespace Microsoft.MixedReality.Profiling
         private string[] cpuFrameRateStrings;
         private string[] gpuFrameRateStrings;
         private char[] stringBuffer = new char[maxStringLength];
+        private ProfilerRecorder drawCallsRecorder;
+        private ProfilerRecorder setPassCallsRecorder;
+        private ProfilerRecorder verticesRecorder;
 
         private ulong memoryUsage;
         private ulong peakMemoryUsage;
@@ -237,6 +245,10 @@ namespace Microsoft.MixedReality.Profiling
             BuildWindow();
             BuildFrameRateStrings();
 
+            drawCallsRecorder = ProfilerRecorder.StartNew(ProfilerCategory.Render, "Draw Calls Count");
+            setPassCallsRecorder = ProfilerRecorder.StartNew(ProfilerCategory.Render, "SetPass Calls Count");
+            verticesRecorder = ProfilerRecorder.StartNew(ProfilerCategory.Render, "Vertices Count");
+
 #if UNITY_STANDALONE_WIN || UNITY_WSA
             BuildKeywordRecognizer();
 #endif
@@ -250,6 +262,9 @@ namespace Microsoft.MixedReality.Profiling
                 keywordRecognizer.Stop();
             }
 #endif
+            verticesRecorder.Dispose();
+            setPassCallsRecorder.Dispose();
+            drawCallsRecorder.Dispose();
 
             Destroy(window);
         }
@@ -342,6 +357,11 @@ namespace Microsoft.MixedReality.Profiling
                     }
                 }
             }
+
+            // Update scene statistics.
+            // TODO, reduce allocations.
+            drawCallPassText.text = drawPassCallString + drawCallsRecorder.LastValue + " / " + setPassCallsRecorder.LastValue;
+            verticiesText.text = verticiesString + (verticesRecorder.LastValue / 1000.0f).ToString("0.0") + "k";
 
             // Update memory statistics.
             ulong limit = AppMemoryUsageLimit;
@@ -452,8 +472,8 @@ namespace Microsoft.MixedReality.Profiling
 
                 frameInfoMatrices = new Matrix4x4[frameRange];
                 frameInfoColors = new Vector4[frameRange];
-                Vector3 scale = new Vector3(1.0f / frameRange, 0.2f, 1.0f);
-                Vector3 position = new Vector3(0.5f - (scale.x * 0.5f), 0.15f, 0.0f);
+                Vector3 scale = new Vector3(1.0f / frameRange, 0.12f, 1.0f);
+                Vector3 position = new Vector3(0.5f - (scale.x * 0.5f), 0.2f, 0.0f);
 
                 for (int i = 0; i < frameRange; ++i)
                 {
@@ -466,16 +486,22 @@ namespace Microsoft.MixedReality.Profiling
                 frameInfoPropertyBlock.SetVectorArray(colorID, frameInfoColors);
             }
 
+            // Add scene statistics text.
+            {
+                drawCallPassText = CreateText("DrawPassCallsText", new Vector3(-0.495f, 0.1f, 0.0f), window.transform, TextAnchor.UpperLeft, textMaterial, Color.white, drawPassCallString);
+                verticiesText = CreateText("VerticiesText", new Vector3(0.495f, 0.1f, 0.0f), window.transform, TextAnchor.UpperRight, textMaterial, Color.white, verticiesString);
+            }
+
             // Add memory usage text and bars.
             {
-                usedMemoryText = CreateText("UsedMemoryText", new Vector3(-0.495f, 0.0f, 0.0f), window.transform, TextAnchor.UpperLeft, textMaterial, memoryUsedColor, usedMemoryString);
-                peakMemoryText = CreateText("PeakMemoryText", new Vector3(0.0f, 0.0f, 0.0f), window.transform, TextAnchor.UpperCenter, textMaterial, memoryPeakColor, peakMemoryString);
-                limitMemoryText = CreateText("LimitMemoryText", new Vector3(0.495f, 0.0f, 0.0f), window.transform, TextAnchor.UpperRight, textMaterial, Color.white, limitMemoryString);
+                usedMemoryText = CreateText("UsedMemoryText", new Vector3(-0.495f, -0.1f, 0.0f), window.transform, TextAnchor.UpperLeft, textMaterial, memoryUsedColor, usedMemoryString);
+                peakMemoryText = CreateText("PeakMemoryText", new Vector3(0.0f, -0.1f, 0.0f), window.transform, TextAnchor.UpperCenter, textMaterial, memoryPeakColor, peakMemoryString);
+                limitMemoryText = CreateText("LimitMemoryText", new Vector3(0.495f, -0.1f, 0.0f), window.transform, TextAnchor.UpperRight, textMaterial, Color.white, limitMemoryString);
 
                 GameObject limitBar = CreateQuad("LimitBar", window.transform);
                 InitializeRenderer(limitBar, defaultMaterial, colorID, memoryLimitColor);
-                limitBar.transform.localScale = new Vector3(0.99f, 0.2f, 1.0f);
-                limitBar.transform.localPosition = new Vector3(0.0f, -0.37f, 0.0f);
+                limitBar.transform.localScale = new Vector3(0.99f, 0.15f, 1.0f);
+                limitBar.transform.localPosition = new Vector3(0.0f, -0.4f, 0.0f);
 
                 {
                     usedAnchor = CreateAnchor("UsedAnchor", limitBar.transform);
@@ -573,14 +599,14 @@ namespace Microsoft.MixedReality.Profiling
             return quad;
         }
 
-        private static TextMesh CreateText(string name, Vector3 position, Transform parent, TextAnchor anchor, Material material, Color color, string text)
+        private static TextMesh CreateText(string name, Vector3 position, Transform parent, TextAnchor anchor, Material material, Color color, string text, int fontSize = 48)
         {
             GameObject obj = new GameObject(name);
             obj.transform.localScale = Vector3.one * 0.0016f;
             obj.transform.parent = parent;
             obj.transform.localPosition = position;
             TextMesh textMesh = obj.AddComponent<TextMesh>();
-            textMesh.fontSize = 48;
+            textMesh.fontSize = fontSize;
             textMesh.anchor = anchor;
             textMesh.color = color;
             textMesh.text = text;
