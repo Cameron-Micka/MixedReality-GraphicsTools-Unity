@@ -167,6 +167,9 @@ namespace Microsoft.MixedReality.Profiling
         private ulong memoryUsage;
         private ulong peakMemoryUsage;
         private ulong limitMemoryUsage;
+        private long drawCalls;
+        private long setPassCalls;
+        private long vertexCount;
 
         // Rendering resources.
         [SerializeField, HideInInspector]
@@ -359,9 +362,28 @@ namespace Microsoft.MixedReality.Profiling
             }
 
             // Update scene statistics.
-            // TODO, reduce allocations.
-            drawCallPassText.text = drawPassCallString + drawCallsRecorder.LastValue + " / " + setPassCallsRecorder.LastValue;
-            verticiesText.text = verticiesString + (verticesRecorder.LastValue / 1000.0f).ToString("0.0") + "k";
+            long lastDrawCalls = drawCallsRecorder.LastValue;
+            long lastSetPassCalls = setPassCallsRecorder.LastValue;
+
+            if (lastDrawCalls != drawCalls || lastSetPassCalls != setPassCalls)
+            {
+                if (window.activeSelf)
+                {
+                    DrawPassCallsToString(stringBuffer, drawCallPassText, drawPassCallString, lastDrawCalls, lastSetPassCalls);
+                }
+
+                drawCalls = lastDrawCalls;
+                setPassCalls = lastSetPassCalls;
+            }
+
+            long lastVertexCount = verticesRecorder.LastValue;
+
+            if (lastVertexCount != vertexCount)
+            {
+                VertexCountToString(stringBuffer, verticiesText, verticiesString, lastVertexCount);
+
+                vertexCount = lastVertexCount;
+            }
 
             // Update memory statistics.
             ulong limit = AppMemoryUsageLimit;
@@ -659,12 +681,12 @@ namespace Microsoft.MixedReality.Profiling
                 stringBuffer[bufferIndex++] = prefixString[i];
             }
 
-            bufferIndex = MemoryItoA(memoryUsageIntegerDigits, stringBuffer, bufferIndex);
+            bufferIndex = ItoA(memoryUsageIntegerDigits, stringBuffer, bufferIndex);
             stringBuffer[bufferIndex++] = '.';
 
             if (memoryUsageFractionalDigits != 0)
             {
-                bufferIndex = MemoryItoA(memoryUsageFractionalDigits, stringBuffer, bufferIndex);
+                bufferIndex = ItoA(memoryUsageFractionalDigits, stringBuffer, bufferIndex);
             }
             else
             {
@@ -679,7 +701,36 @@ namespace Microsoft.MixedReality.Profiling
             textMesh.text = new string(stringBuffer, 0, bufferIndex);
         }
 
-        private static int MemoryItoA(int value, char[] stringBuffer, int bufferIndex)
+        private static void DrawPassCallsToString(char[] stringBuffer, TextMesh textMesh, string prefixString, long drawCalls, long setPassCalls)
+        {
+            int bufferIndex = 0;
+
+            for (int i = 0; i < prefixString.Length; ++i)
+            {
+                stringBuffer[bufferIndex++] = prefixString[i];
+            }
+
+            bufferIndex = ItoA((int)drawCalls, stringBuffer, bufferIndex);
+            stringBuffer[bufferIndex++] = '/';
+            bufferIndex = ItoA((int)setPassCalls, stringBuffer, bufferIndex);
+
+            textMesh.text = new string(stringBuffer, 0, bufferIndex);
+        }
+
+        private static void VertexCountToString(char[] stringBuffer, TextMesh textMesh, string prefixString, long vertexCount)
+        {
+            int bufferIndex = 0;
+
+            for (int i = 0; i < prefixString.Length; ++i)
+            {
+                stringBuffer[bufferIndex++] = prefixString[i];
+            }
+
+            // TODO
+            textMesh.text = prefixString + (vertexCount / 1000.0f).ToString("0.0") + "k";
+        }
+
+        private static int ItoA(int value, char[] stringBuffer, int bufferIndex)
         {
             int startIndex = bufferIndex;
 
