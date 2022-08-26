@@ -59,7 +59,18 @@ namespace Microsoft.MixedReality.Profiling
         public bool IsVisible
         {
             get { return isVisible; }
-            set { isVisible = value; }
+            set 
+            { 
+                if (isVisible != value)
+                {
+                    isVisible = value;
+
+                    if (isVisible)
+                    {
+                        Refresh();
+                    }
+                }
+            }
         }
 
         [SerializeField, Tooltip("The amount of time, in seconds, to collect frames for frame rate calculation.")]
@@ -117,7 +128,7 @@ namespace Microsoft.MixedReality.Profiling
         private int displayedDecimalDigits = 1;
 
         [SerializeField, Tooltip("The color of the window backplate.")]
-        private Color baseColor = new Color(80 / 256.0f, 80 / 256.0f, 80 / 256.0f, 1.0f);
+        private Color baseColor = new Color(50 / 256.0f, 50 / 256.0f, 50 / 256.0f, 1.0f);
 
         [SerializeField, Tooltip("The color to display on frames which meet or exceed the target frame rate.")]
         private Color targetFrameRateColor = new Color(127 / 256.0f, 186 / 256.0f, 0 / 256.0f, 1.0f);
@@ -132,7 +143,7 @@ namespace Microsoft.MixedReality.Profiling
         private Color memoryPeakColor = new Color(255 / 256.0f, 185 / 256.0f, 0 / 256.0f, 1.0f);
 
         [SerializeField, Tooltip("The color to display for the platforms memory usage limit.")]
-        private Color memoryLimitColor = new Color(150 / 256.0f, 150 / 256.0f, 150 / 256.0f, 1.0f);
+        private Color memoryLimitColor = new Color(100 / 256.0f, 100 / 256.0f, 100 / 256.0f, 1.0f);
 
         private GameObject window;
         private TextMesh cpuFrameRateText;
@@ -164,12 +175,12 @@ namespace Microsoft.MixedReality.Profiling
         private ProfilerRecorder setPassCallsRecorder;
         private ProfilerRecorder verticesRecorder;
 
-        private ulong memoryUsage;
-        private ulong peakMemoryUsage;
-        private ulong limitMemoryUsage;
         private long drawCalls;
         private long setPassCalls;
         private long vertexCount;
+        private ulong memoryUsage;
+        private ulong peakMemoryUsage;
+        private ulong limitMemoryUsage;
 
         // Rendering resources.
         [SerializeField, HideInInspector]
@@ -302,7 +313,8 @@ namespace Microsoft.MixedReality.Profiling
                 int gpuFrameRate = 0;
 
                 // Many platforms do not yet support the FrameTimingManager. When timing data is returned from the FrameTimingManager we will use
-                // its timing data, else we will depend on the stopwatch.
+                // its timing data, else we will depend on the stopwatch. Wider support is coming in Unity 2022.1+
+                // https://blog.unity.com/technology/detecting-performance-bottlenecks-with-unity-frame-timing-manager
                 uint frameTimingsCount = FrameTimingManager.GetLatestTimings((uint)Mathf.Min(frameCount, maxFrameTimings), frameTimings);
 
                 if (frameTimingsCount != 0)
@@ -313,13 +325,17 @@ namespace Microsoft.MixedReality.Profiling
                     gpuFrameRate = (int)(1.0f / (gpuFrameTime / frameCount));
                 }
 
+                Color cpuFrameColor = (cpuFrameRate < ((int)(AppFrameRate) - 1)) ? missedFrameRateColor : targetFrameRateColor;
+
                 // Update frame rate text.
                 cpuFrameRateText.text = cpuFrameRateStrings[Mathf.Clamp(cpuFrameRate, 0, maxTargetFrameRate)];
+                cpuFrameRateText.color = cpuFrameColor;
 
                 if (gpuFrameRate != 0)
                 {
                     gpuFrameRateText.gameObject.SetActive(true);
                     gpuFrameRateText.text = gpuFrameRateStrings[Mathf.Clamp(gpuFrameRate, 0, maxTargetFrameRate)];
+                    gpuFrameRateText.color = (gpuFrameRate < ((int)(AppFrameRate) - 1)) ? missedFrameRateColor : targetFrameRateColor;
                 }
 
                 // Update frame colors.
@@ -331,7 +347,7 @@ namespace Microsoft.MixedReality.Profiling
                 // Ideally we would query a device specific API (like the HolographicFramePresentationReport) to detect missed frames.
                 // But, many of these APIs are inaccessible in Unity. Currently missed frames are assumed when the average cpuFrameRate 
                 // is under the target frame rate.
-                frameInfoColors[0] = (cpuFrameRate < ((int)(AppFrameRate) - 1)) ? missedFrameRateColor : targetFrameRateColor;
+                frameInfoColors[0] = cpuFrameColor;
                 frameInfoPropertyBlock.SetVectorArray(colorID, frameInfoColors);
 
                 // Reset timers.
@@ -380,7 +396,10 @@ namespace Microsoft.MixedReality.Profiling
 
             if (lastVertexCount != vertexCount)
             {
-                VertexCountToString(stringBuffer, verticiesText, verticiesString, lastVertexCount);
+                if (window.activeSelf && WillDisplayedVertexCountDiffer(lastVertexCount, vertexCount, displayedDecimalDigits))
+                {
+                    VertexCountToString(stringBuffer, displayedDecimalDigits, verticiesText, verticiesString, lastVertexCount);
+                }
 
                 vertexCount = lastVertexCount;
             }
@@ -425,6 +444,11 @@ namespace Microsoft.MixedReality.Profiling
             }
 
             window.SetActive(isVisible);
+        }
+
+        private void OnValidate()
+        {
+            Refresh();
         }
 
         private Vector3 CalculateWindowPosition(Transform cameraTransform)
@@ -591,15 +615,21 @@ namespace Microsoft.MixedReality.Profiling
                 else
                 {
                     window.SetActive(true);
-
-                    // Force refresh of strings.
-                    MemoryUsageToString(stringBuffer, displayedDecimalDigits, limitMemoryText, limitMemoryString, limitMemoryUsage);
-                    MemoryUsageToString(stringBuffer, displayedDecimalDigits, usedMemoryText, usedMemoryString, memoryUsage);
-                    MemoryUsageToString(stringBuffer, displayedDecimalDigits, peakMemoryText, peakMemoryString, peakMemoryUsage);
+                    Refresh();
                 }
             }
         }
 #endif
+
+        private void Refresh()
+        {
+            drawCalls = 0;
+            setPassCalls = 0;
+            vertexCount = 0;
+            memoryUsage = 0;
+            peakMemoryUsage = 0;
+            limitMemoryUsage = 0;
+        }
 
         private static Transform CreateAnchor(string name, Transform parent)
         {
@@ -682,7 +712,11 @@ namespace Microsoft.MixedReality.Profiling
             }
 
             bufferIndex = ItoA(memoryUsageIntegerDigits, stringBuffer, bufferIndex);
-            stringBuffer[bufferIndex++] = '.';
+
+            if (displayedDecimalDigits != 0)
+            {
+                stringBuffer[bufferIndex++] = '.';
+            }
 
             if (memoryUsageFractionalDigits != 0)
             {
@@ -698,6 +732,7 @@ namespace Microsoft.MixedReality.Profiling
 
             stringBuffer[bufferIndex++] = 'M';
             stringBuffer[bufferIndex++] = 'B';
+
             textMesh.text = new string(stringBuffer, 0, bufferIndex);
         }
 
@@ -717,7 +752,7 @@ namespace Microsoft.MixedReality.Profiling
             textMesh.text = new string(stringBuffer, 0, bufferIndex);
         }
 
-        private static void VertexCountToString(char[] stringBuffer, TextMesh textMesh, string prefixString, long vertexCount)
+        private static void VertexCountToString(char[] stringBuffer, int displayedDecimalDigits, TextMesh textMesh, string prefixString, long vertexCount)
         {
             int bufferIndex = 0;
 
@@ -726,25 +761,56 @@ namespace Microsoft.MixedReality.Profiling
                 stringBuffer[bufferIndex++] = prefixString[i];
             }
 
-            // TODO
-            textMesh.text = prefixString + (vertexCount / 1000.0f).ToString("0.0") + "k";
+            float vertexCountK = vertexCount / 1000.0f;
+            int vertexIntegerDigits = (int)vertexCountK;
+            int vertexFractionalDigits = (int)((vertexCountK - vertexIntegerDigits) * Mathf.Pow(10.0f, displayedDecimalDigits));
+
+            bufferIndex = ItoA(vertexIntegerDigits, stringBuffer, bufferIndex);
+
+            if (displayedDecimalDigits != 0)
+            {
+                stringBuffer[bufferIndex++] = '.';
+            }
+
+            if (vertexFractionalDigits != 0)
+            {
+                bufferIndex = ItoA(vertexFractionalDigits, stringBuffer, bufferIndex);
+            }
+            else
+            {
+                for (int i = 0; i < displayedDecimalDigits; ++i)
+                {
+                    stringBuffer[bufferIndex++] = '0';
+                }
+            }
+
+            stringBuffer[bufferIndex++] = 'k';
+
+            textMesh.text = new string(stringBuffer, 0, bufferIndex);
         }
 
         private static int ItoA(int value, char[] stringBuffer, int bufferIndex)
         {
-            int startIndex = bufferIndex;
-
-            for (; value != 0; value /= 10)
+            if (value == 0)
             {
-                stringBuffer[bufferIndex++] = (char)((char)(value % 10) + '0');
+                stringBuffer[bufferIndex++] = '0';
             }
-
-            char temp;
-            for (int endIndex = bufferIndex - 1; startIndex < endIndex; ++startIndex, --endIndex)
+            else
             {
-                temp = stringBuffer[startIndex];
-                stringBuffer[startIndex] = stringBuffer[endIndex];
-                stringBuffer[endIndex] = temp;
+                int startIndex = bufferIndex;
+
+                for (; value != 0; value /= 10)
+                {
+                    stringBuffer[bufferIndex++] = (char)((char)(value % 10) + '0');
+                }
+
+                char temp;
+                for (int endIndex = bufferIndex - 1; startIndex < endIndex; ++startIndex, --endIndex)
+                {
+                    temp = stringBuffer[startIndex];
+                    stringBuffer[startIndex] = stringBuffer[endIndex];
+                    stringBuffer[endIndex] = temp;
+                }
             }
 
             return bufferIndex;
@@ -800,6 +866,15 @@ namespace Microsoft.MixedReality.Profiling
                 return ConvertMegabytesToBytes(SystemInfo.systemMemorySize);
 #endif
             }
+        }
+
+        private static bool WillDisplayedVertexCountDiffer(long oldCount, long newCount, int displayedDecimalDigits)
+        {
+            float oldCountK = oldCount / 1000.0f;
+            float newCountK = newCount / 1000.0f;
+            float decimalPower = Mathf.Pow(10.0f, displayedDecimalDigits);
+
+            return (int)(oldCountK * decimalPower) != (int)(newCountK * decimalPower);
         }
 
         private static bool WillDisplayedMemoryUsageDiffer(ulong oldUsage, ulong newUsage, int displayedDecimalDigits)
