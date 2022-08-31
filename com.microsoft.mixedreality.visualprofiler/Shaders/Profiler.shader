@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-Shader "Hidden/Instanced-Colored"
+Shader "Hidden/Profiler"
 {
     Properties
     {
         _Color("Color", Color) = (1.0, 1.0, 1.0, 1.0)
+        _BaseColor("Base Color", Color) = (0.0, 0.0, 0.0, 1.0)
         _FontTexture("Font", 2D) = "black" {}
     }
 
@@ -46,11 +47,12 @@ Shader "Hidden/Instanced-Colored"
                 UNITY_VERTEX_OUTPUT_STEREO
             };
 
+            fixed4 _BaseColor;
             sampler2D _FontTexture;
             float4x4 _ParentLocalToWorldMatrix;
 
             UNITY_INSTANCING_BUFFER_START(Props)
-            UNITY_DEFINE_INSTANCED_PROP(float4, _Color)
+            UNITY_DEFINE_INSTANCED_PROP(fixed4, _Color)
             UNITY_DEFINE_INSTANCED_PROP(float4, _UVScaleOffset)
             UNITY_INSTANCING_BUFFER_END(Props)
 
@@ -74,7 +76,9 @@ Shader "Hidden/Instanced-Colored"
 
             fixed4 frag(v2f i) : SV_Target
             {
-                return tex2D(_FontTexture, i.uv) * i.color;
+                fixed4 font = tex2D(_FontTexture, i.uv);
+                fixed alpha = font.r;
+                return fixed4((_BaseColor.rgb * (1.0 - alpha)) + (font.rgb * i.color.rgb * alpha), 1.0);
             }
 
             ENDCG

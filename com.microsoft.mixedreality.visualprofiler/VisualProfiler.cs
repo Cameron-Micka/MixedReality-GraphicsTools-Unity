@@ -44,13 +44,24 @@ namespace Microsoft.MixedReality.Profiling
         private const int frameRange = 30;
 
         private const int windowInstanceOffset = 0;
+
         private const int framesInstanceOffset = windowInstanceOffset + 1;
+
         private const int limitInstanceOffset = framesInstanceOffset + frameRange;
         private const int peakInstanceOffset = limitInstanceOffset + 1;
         private const int usedInstanceOffset = peakInstanceOffset + 1;
-        private const int frameRateTextOffset = usedInstanceOffset + 1;
 
-        private const int instanceCount = frameRateTextOffset + maxStringLength;
+        private const int cpuframeRateTextOffset = usedInstanceOffset + 1;
+        private const int gpuframeRateTextOffset = cpuframeRateTextOffset + maxStringLength;
+
+        private const int drawCallPassTextOffset = gpuframeRateTextOffset + maxStringLength;
+        private const int verticiesTextOffset = drawCallPassTextOffset + maxStringLength;
+
+        private const int usedMemoryTextOffset = verticiesTextOffset + maxStringLength;
+        private const int peakMemoryTextOffset = usedMemoryTextOffset + maxStringLength;
+        private const int limitMemoryTextOffset = peakMemoryTextOffset + maxStringLength;
+
+        private const int instanceCount = limitMemoryTextOffset + maxStringLength;
 
         private const string drawPassCallString = "Draw/Pass: ";
         private const string verticiesString = "Verts: ";
@@ -59,9 +70,6 @@ namespace Microsoft.MixedReality.Profiling
         private const string limitMemoryString = "Limit: ";
 
         private static readonly Vector2 defaultWindowRotation = new Vector2(10.0f, 20.0f);
-        private static readonly Vector3 defaultWindowScale = new Vector3(0.2f, 0.04f, 1.0f);
-
-        public Transform WindowParent { get; set; } = null;
 
         [Header("Profiler Settings")]
         [SerializeField, Tooltip("Is the profiler currently visible.")]
@@ -159,26 +167,30 @@ namespace Microsoft.MixedReality.Profiling
         private class TextData
         {
             public Vector3 Position;
-            public TextAnchor Anchor;
+            public bool RightAligned;
+            public bool Visible;
             public int Offset;
-            public int Count;
 
-            public TextData(Vector3 position, TextAnchor anchor, int offset)
+            public TextData(Vector3 position, bool rightAligned, bool visible, int offset)
             {
                 Position = position;
-                Anchor = anchor;
+                RightAligned = rightAligned;
+                Visible = visible;
                 Offset = offset;
             }
         }
 
+        private Vector3 windowPosition = Vector3.zero;
+        private Quaternion windowRotation = Quaternion.identity;
+
         private GameObject window;
         private TextData cpuFrameRateText;
-        private TextMesh gpuFrameRateText;
-        private TextMesh drawCallPassText;
-        private TextMesh verticiesText;
-        private TextMesh usedMemoryText;
-        private TextMesh peakMemoryText;
-        private TextMesh limitMemoryText;
+        private TextData gpuFrameRateText;
+        private TextData drawCallPassText;
+        private TextData verticiesText;
+        private TextData usedMemoryText;
+        private TextData peakMemoryText;
+        private TextData limitMemoryText;
         private Transform usedAnchor;
         private Transform usedbar;
         private Transform peakAnchor;
@@ -198,8 +210,8 @@ namespace Microsoft.MixedReality.Profiling
         private int frameCount;
         private System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
         private FrameTiming[] frameTimings = new FrameTiming[maxFrameTimings];
-        private string[] frameRateStrings;
-        private string[] gpuFrameRateStrings;
+        private char[][] frameRateStrings;
+        private char[][] gpuFrameRateStrings;
         private char[] stringBuffer = new char[maxStringLength];
         private ProfilerRecorder drawCallsRecorder;
         private ProfilerRecorder setPassCallsRecorder;
@@ -326,9 +338,10 @@ namespace Microsoft.MixedReality.Profiling
             if (window.activeSelf && cameraTransform != null)
             {
                 float t = Time.deltaTime * windowFollowSpeed;
-                window.transform.position = Vector3.Lerp(window.transform.position, CalculateWindowPosition(cameraTransform), t);
-                window.transform.rotation = Quaternion.Slerp(window.transform.rotation, CalculateWindowRotation(cameraTransform), t);
-                window.transform.localScale = defaultWindowScale * windowScale;
+                windowPosition = Vector3.Lerp(windowPosition, CalculateWindowPosition(cameraTransform), t);
+                windowRotation = Quaternion.Slerp(windowRotation, CalculateWindowRotation(cameraTransform), t);
+                window.transform.position = windowPosition;
+                window.transform.rotation = windowRotation;
             }
 
             // Capture frame timings every frame and read from it depending on the frameSampleRate.
@@ -358,15 +371,21 @@ namespace Microsoft.MixedReality.Profiling
                 Color cpuFrameColor = (cpuFrameRate < ((int)(AppFrameRate) - 1)) ? missedFrameRateColor : targetFrameRateColor;
 
                 // Update frame rate text.
-                SetText(cpuFrameRateText, frameRateStrings[Mathf.Clamp(cpuFrameRate, 0, maxTargetFrameRate)], cpuFrameColor);
-                instancePropertyBlock.SetVectorArray(uvScaleOffsetID, instanceUVScaleOffset); // TODO update when dirty.
-
-                if (gpuFrameRate != 0)
                 {
-                    gpuFrameRateText.gameObject.SetActive(true);
-                    gpuFrameRateText.text = gpuFrameRateStrings[Mathf.Clamp(gpuFrameRate, 0, maxTargetFrameRate)];
-                    gpuFrameRateText.color = (gpuFrameRate < ((int)(AppFrameRate) - 1)) ? missedFrameRateColor : targetFrameRateColor;
+                    char[] text = frameRateStrings[Mathf.Clamp(cpuFrameRate, 0, maxTargetFrameRate)];
+                    SetText(cpuFrameRateText, text, text.Length, cpuFrameColor);
                 }
+
+                //if (gpuFrameRate != 0)
+                {
+                    gpuFrameRateText.Visible = true;
+
+                    char[] text = gpuFrameRateStrings[Mathf.Clamp(gpuFrameRate, 0, maxTargetFrameRate)];
+                    Color color = (gpuFrameRate < ((int)(AppFrameRate) - 1)) ? missedFrameRateColor : targetFrameRateColor;
+                    SetText(gpuFrameRateText, text, text.Length, color);
+                }
+
+                instancePropertyBlock.SetVectorArray(uvScaleOffsetID, instanceUVScaleOffset); // TODO update when dirty.
 
                 // Update frame colors.
                 for (int i = frameRange - 1; i > 0; --i)
@@ -389,7 +408,7 @@ namespace Microsoft.MixedReality.Profiling
             // Draw frame info.
             if (window.activeSelf)
             {
-                Matrix4x4 parentLocalToWorldMatrix = window.transform.localToWorldMatrix;
+                Matrix4x4 parentLocalToWorldMatrix = Matrix4x4.TRS(windowPosition, windowRotation, Vector3.one * windowScale);
 
                 if (defaultInstancedMaterial != null)
                 {
@@ -441,7 +460,7 @@ namespace Microsoft.MixedReality.Profiling
             {
                 if (window.activeSelf && WillDisplayedMemoryUsageDiffer(limitMemoryUsage, limit, displayedDecimalDigits))
                 {
-                    MemoryUsageToString(stringBuffer, displayedDecimalDigits, limitMemoryText, limitMemoryString, limit);
+                    MemoryUsageToString(stringBuffer, displayedDecimalDigits, limitMemoryText, limitMemoryString, limit, Color.white);
                 }
 
                 limitMemoryUsage = limit;
@@ -456,7 +475,7 @@ namespace Microsoft.MixedReality.Profiling
 
                 if (window.activeSelf && WillDisplayedMemoryUsageDiffer(memoryUsage, usage, displayedDecimalDigits))
                 {
-                    MemoryUsageToString(stringBuffer, displayedDecimalDigits, usedMemoryText, usedMemoryString, usage);
+                    MemoryUsageToString(stringBuffer, displayedDecimalDigits, usedMemoryText, usedMemoryString, usage, memoryUsedColor);
                 }
 
                 memoryUsage = usage;
@@ -469,7 +488,7 @@ namespace Microsoft.MixedReality.Profiling
 
                 if (window.activeSelf && WillDisplayedMemoryUsageDiffer(peakMemoryUsage, memoryUsage, displayedDecimalDigits))
                 {
-                    MemoryUsageToString(stringBuffer, displayedDecimalDigits, peakMemoryText, peakMemoryString, memoryUsage);
+                    MemoryUsageToString(stringBuffer, displayedDecimalDigits, peakMemoryText, peakMemoryString, memoryUsage, memoryPeakColor);
                 }
 
                 peakMemoryUsage = memoryUsage;
@@ -533,12 +552,13 @@ namespace Microsoft.MixedReality.Profiling
             // 157 is the bottom right of the font texture.
             Vector4 whiteSpaceUV = CalculateUV((char)157);
 
+            Vector3 defaultWindowSize = new Vector3(0.2f, 0.04f, 1.0f);
+            float edgeX = defaultWindowSize.x * 0.5f;
+
             // Build the window root.
             {
                 window = CreateGameObject("VisualProfiler", null);
-                window.transform.parent = WindowParent;
-                window.transform.localScale = defaultWindowScale;
-                instanceMatrices[windowInstanceOffset] = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, Vector3.one);
+                instanceMatrices[windowInstanceOffset] = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, defaultWindowSize);
                 instanceColors[windowInstanceOffset] = baseColor;
                 instanceUVScaleOffset[windowInstanceOffset] = whiteSpaceUV;
                 windowHorizontalRotation = Quaternion.AngleAxis(defaultWindowRotation.y, Vector3.right);
@@ -547,19 +567,25 @@ namespace Microsoft.MixedReality.Profiling
                 windowVerticalRotationInverse = Quaternion.Inverse(windowVerticalRotation);
             }
 
-            // Add frame rate text and frame indicators.
+            // Add frame rate text.
             {
-                cpuFrameRateText = new TextData(new Vector3(-0.495f, 0.5f, 0.0f), TextAnchor.UpperLeft, frameRateTextOffset);
-                gpuFrameRateText = CreateText("GPUFrameRateText", new Vector3(0.495f, 0.5f, 0.0f), window.transform, TextAnchor.UpperRight, textMaterial, Color.white, string.Empty);
-                gpuFrameRateText.gameObject.SetActive(false);
+                float height = 0.019f;
+                cpuFrameRateText = new TextData(new Vector3(-edgeX, height, 0.0f), false, true, cpuframeRateTextOffset);
+                gpuFrameRateText = new TextData(new Vector3(edgeX, height, 0.0f), true, false, gpuframeRateTextOffset);
+            }
 
-                Vector3 scale = new Vector3(1.0f / frameRange, 0.12f, 1.0f);
-                Vector3 position = new Vector3(0.5f - (scale.x * 0.5f), 0.2f, 0.0f);
+            // Add frame rate indicators.
+            {
+                float height = 0.009f;
+                float size = (1.0f / frameRange) * defaultWindowSize.x;
+                Vector3 scale = new Vector3(size, size, 1.0f);
+                Vector3 position = new Vector3(-defaultWindowSize.x * 0.5f, height, 0.0f);
+                position.x += scale.x * 0.5f;
 
                 for (int i = 0; i < frameRange; ++i)
                 {
-                    instanceMatrices[framesInstanceOffset + i] = Matrix4x4.TRS(position, Quaternion.identity, new Vector3(scale.x * 0.8f, scale.y, scale.z));
-                    position.x -= scale.x;
+                    instanceMatrices[framesInstanceOffset + i] = Matrix4x4.TRS(position, Quaternion.identity, new Vector3(scale.x * 0.8f, scale.y * 0.8f, scale.z));
+                    position.x += scale.x;
                     instanceColors[framesInstanceOffset + i] = targetFrameRateColor;
                     instanceUVScaleOffset[framesInstanceOffset + i] = whiteSpaceUV;
                 }
@@ -567,19 +593,19 @@ namespace Microsoft.MixedReality.Profiling
 
             // Add scene statistics text.
             {
-                drawCallPassText = CreateText("DrawPassCallsText", new Vector3(-0.495f, 0.1f, 0.0f), window.transform, TextAnchor.UpperLeft, textMaterial, Color.white, drawPassCallString);
-                verticiesText = CreateText("VerticiesText", new Vector3(0.495f, 0.1f, 0.0f), window.transform, TextAnchor.UpperRight, textMaterial, Color.white, verticiesString);
+                float height = 0.003f;
+                drawCallPassText = new TextData(new Vector3(-edgeX, height, 0.0f), false, true, drawCallPassTextOffset);
+                verticiesText = new TextData(new Vector3(edgeX, height, 0.0f), true, true, verticiesTextOffset);
             }
 
-            // Add memory usage text and bars.
+            // Add memory usage bars.
             {
-                usedMemoryText = CreateText("UsedMemoryText", new Vector3(-0.495f, -0.1f, 0.0f), window.transform, TextAnchor.UpperLeft, textMaterial, memoryUsedColor, usedMemoryString);
-                peakMemoryText = CreateText("PeakMemoryText", new Vector3(0.0f, -0.1f, 0.0f), window.transform, TextAnchor.UpperCenter, textMaterial, memoryPeakColor, peakMemoryString);
-                limitMemoryText = CreateText("LimitMemoryText", new Vector3(0.495f, -0.1f, 0.0f), window.transform, TextAnchor.UpperRight, textMaterial, Color.white, limitMemoryString);
-
+                float height = -0.008f;
                 GameObject limitBar = CreateGameObject("LimitBar", window.transform);
-                limitBar.transform.localScale = new Vector3(0.99f, 0.15f, 1.0f);
-                limitBar.transform.localPosition = new Vector3(0.0f, -0.4f, 0.0f);
+                Vector3 temp = defaultWindowSize;
+                temp.Scale(new Vector3(0.99f, 0.15f, 1.0f));
+                limitBar.transform.localScale = temp;
+                limitBar.transform.localPosition = new Vector3(0.0f, height, 0.0f);
                 instanceMatrices[limitInstanceOffset] = Matrix4x4.TRS(limitBar.transform.localPosition, limitBar.transform.localRotation, limitBar.transform.localScale);
                 instanceColors[limitInstanceOffset] = memoryLimitColor;
                 instanceUVScaleOffset[limitInstanceOffset] = whiteSpaceUV;
@@ -588,7 +614,7 @@ namespace Microsoft.MixedReality.Profiling
                     peakAnchor = CreateAnchor("PeakAnchor", limitBar.transform);
                     peakBar = CreateGameObject("PeakBar", peakAnchor).transform;
                     peakBar.localScale = Vector3.one;
-                    peakBar.localPosition = new Vector3(0.5f, 0.0f, 0.0f);
+                    peakBar.localPosition = new Vector3(edgeX, 0.0f, 0.0f);
                     instanceMatrices[peakInstanceOffset] = window.transform.worldToLocalMatrix * Matrix4x4.TRS(peakBar.position, peakBar.rotation, peakBar.lossyScale);
                     instanceColors[peakInstanceOffset] = memoryUsedColor;
                     instanceUVScaleOffset[peakInstanceOffset] = whiteSpaceUV;
@@ -599,25 +625,46 @@ namespace Microsoft.MixedReality.Profiling
                     Material material = new Material(foregroundMaterial);
                     material.renderQueue = material.renderQueue + 1;
                     usedbar.localScale = Vector3.one;
-                    usedbar.localPosition = new Vector3(0.5f, 0.0f, 0.0f);
+                    usedbar.localPosition = new Vector3(edgeX, 0.0f, 0.0f);
                     instanceMatrices[usedInstanceOffset] = window.transform.worldToLocalMatrix * Matrix4x4.TRS(usedbar.position, usedbar.rotation, usedbar.lossyScale);
                     instanceColors[usedInstanceOffset] = memoryPeakColor;
                     instanceUVScaleOffset[usedInstanceOffset] = whiteSpaceUV;
                 }
             }
 
+            // Add memory usage text.
+            {
+                float height = -0.013f;
+                usedMemoryText = new TextData(new Vector3(-edgeX, height, 0.0f), false, true, usedMemoryTextOffset);
+                peakMemoryText = new TextData(new Vector3(-0.03f, height, 0.0f), false, true, peakMemoryTextOffset);
+                limitMemoryText = new TextData(new Vector3(edgeX, height, 0.0f), true, true, limitMemoryTextOffset);
+            }
+
             // Initialize property block state.
             instancePropertyBlock = new MaterialPropertyBlock();
             instancePropertyBlock.SetVectorArray(colorID, instanceColors);
             instancePropertyBlock.SetVectorArray(uvScaleOffsetID, instanceUVScaleOffset);
+            instancePropertyBlock.SetVector("_BaseColor", baseColor);
 
             window.SetActive(isVisible);
         }
 
+        private static char[] ToCharArray(StringBuilder stringBuilder)
+        {
+            char[] output = new char[stringBuilder.Length];
+
+            for (int i = 0; i < output.Length; ++i)
+            {
+                output[i] = stringBuilder[i];
+            }
+
+            return output;
+        }
+
         private void BuildFrameRateStrings()
         {
-            frameRateStrings = new string[maxTargetFrameRate + 1];
-            gpuFrameRateStrings = new string[maxTargetFrameRate + 1];
+            frameRateStrings = new char[maxTargetFrameRate + 1][];
+            gpuFrameRateStrings = new char[maxTargetFrameRate + 1][];
             string displayedDecimalFormat = string.Format("{{0:F{0}}}", displayedDecimalDigits);
 
             StringBuilder stringBuilder = new StringBuilder(32);
@@ -628,27 +675,47 @@ namespace Microsoft.MixedReality.Profiling
                 float miliseconds = (i == 0) ? 0.0f : (1.0f / i) * 1000.0f;
                 milisecondStringBuilder.AppendFormat(displayedDecimalFormat, miliseconds);
                 stringBuilder.AppendFormat("Frame: {0} fps ({1} ms)", i.ToString(), milisecondStringBuilder.ToString());
-                frameRateStrings[i] = stringBuilder.ToString();
+                frameRateStrings[i] = ToCharArray(stringBuilder);
                 stringBuilder.Length = 0;
                 stringBuilder.AppendFormat("GPU: {0} fps ({1} ms)", i.ToString(), milisecondStringBuilder.ToString());
-                gpuFrameRateStrings[i] = stringBuilder.ToString();
+                gpuFrameRateStrings[i] = ToCharArray(stringBuilder);
                 milisecondStringBuilder.Length = 0;
                 stringBuilder.Length = 0;
             }
         }
 
-        void SetText(TextData data, string text, Color color)
+        void SetText(TextData data, char[] text, int count, Color color)
         {
-            Vector3 scale = new Vector3(7.0f, 9.0f * 8.0f, 1.0f) * 0.0028f;
-            Vector3 position = data.Position;
-            position -= Vector3.up * scale.y * 0.5f;
-
-            for (int i = 0; i < text.Length; ++i)
+            if (!data.Visible)
             {
-                instanceMatrices[data.Offset + i] = Matrix4x4.TRS(position, Quaternion.identity, scale);
-                instanceColors[data.Offset + i] = color;
-                instanceUVScaleOffset[data.Offset + i] = CalculateUV(text[i]);
-                position += Vector3.right * scale.x;
+                for (int i = 0; i < maxStringLength; ++i)
+                {
+                    instanceMatrices[data.Offset + i] = Matrix4x4.zero;
+                }
+            }
+            else
+            {
+                Vector3 scale = new Vector3(7.0f, 9.0f, 1.0f) * 0.00061f;
+                Vector3 position = data.Position;
+                position -= Vector3.up * scale.y * 0.5f;
+                position += (data.RightAligned) ? Vector3.right * -scale.x * 0.5f : Vector3.right * scale.x * 0.5f;
+
+                for (int i = 0; i < maxStringLength; ++i)
+                {
+                    if (i < count)
+                    {
+                        instanceMatrices[data.Offset + i] = Matrix4x4.TRS(position, Quaternion.identity, scale);
+                        instanceColors[data.Offset + i] = color;
+                        int charIndex = (data.RightAligned) ? count - i - 1 : i;
+                        instanceUVScaleOffset[data.Offset + i] = CalculateUV(text[charIndex]);
+
+                        position += (data.RightAligned) ? Vector3.right * -scale.x : Vector3.right * scale.x;
+                    }
+                    else
+                    {
+                        instanceMatrices[data.Offset + i] = Matrix4x4.zero;
+                    }
+                }
             }
         }
 
@@ -708,26 +775,7 @@ namespace Microsoft.MixedReality.Profiling
             return go;
         }
 
-        private static TextMesh CreateText(string name, Vector3 position, Transform parent, TextAnchor anchor, Material material, Color color, string text, int fontSize = 48)
-        {
-            GameObject obj = new GameObject(name);
-            obj.transform.localScale = Vector3.one * 0.0016f;
-            obj.transform.parent = parent;
-            obj.transform.localPosition = position;
-            TextMesh textMesh = obj.AddComponent<TextMesh>();
-            textMesh.fontSize = fontSize;
-            textMesh.anchor = anchor;
-            textMesh.color = color;
-            textMesh.text = text;
-            textMesh.richText = false;
-
-            Renderer renderer = obj.GetComponent<Renderer>();
-            renderer.sharedMaterial = material;
-
-            return textMesh;
-        }
-
-        private static void MemoryUsageToString(char[] stringBuffer, int displayedDecimalDigits, TextMesh textMesh, string prefixString, ulong memoryUsage)
+        private void MemoryUsageToString(char[] buffer, int displayedDecimalDigits, TextData data, string prefix, ulong memoryUsage, Color color)
         {
             // Using a custom number to string method to avoid the overhead, and allocations, of built in string.Format/StringBuilder methods.
             // We can also make some assumptions since the domain of the input number (memoryUsage) is known.
@@ -736,87 +784,87 @@ namespace Microsoft.MixedReality.Profiling
             int memoryUsageFractionalDigits = (int)((memoryUsageMB - memoryUsageIntegerDigits) * Mathf.Pow(10.0f, displayedDecimalDigits));
             int bufferIndex = 0;
 
-            for (int i = 0; i < prefixString.Length; ++i)
+            for (int i = 0; i < prefix.Length; ++i)
             {
-                stringBuffer[bufferIndex++] = prefixString[i];
+                buffer[bufferIndex++] = prefix[i];
             }
 
-            bufferIndex = ItoA(memoryUsageIntegerDigits, stringBuffer, bufferIndex);
+            bufferIndex = ItoA(memoryUsageIntegerDigits, buffer, bufferIndex);
 
             if (displayedDecimalDigits != 0)
             {
-                stringBuffer[bufferIndex++] = '.';
+                buffer[bufferIndex++] = '.';
             }
 
             if (memoryUsageFractionalDigits != 0)
             {
-                bufferIndex = ItoA(memoryUsageFractionalDigits, stringBuffer, bufferIndex);
+                bufferIndex = ItoA(memoryUsageFractionalDigits, buffer, bufferIndex);
             }
             else
             {
                 for (int i = 0; i < displayedDecimalDigits; ++i)
                 {
-                    stringBuffer[bufferIndex++] = '0';
+                    buffer[bufferIndex++] = '0';
                 }
             }
 
-            stringBuffer[bufferIndex++] = 'M';
-            stringBuffer[bufferIndex++] = 'B';
+            buffer[bufferIndex++] = 'M';
+            buffer[bufferIndex++] = 'B';
 
-            textMesh.text = new string(stringBuffer, 0, bufferIndex);
+            SetText(data, buffer, bufferIndex, color);
         }
 
-        private static void DrawPassCallsToString(char[] stringBuffer, TextMesh textMesh, string prefixString, long drawCalls, long setPassCalls)
+        private void DrawPassCallsToString(char[] buffer, TextData data, string prefix, long drawCalls, long setPassCalls)
         {
             int bufferIndex = 0;
 
-            for (int i = 0; i < prefixString.Length; ++i)
+            for (int i = 0; i < prefix.Length; ++i)
             {
-                stringBuffer[bufferIndex++] = prefixString[i];
+                buffer[bufferIndex++] = prefix[i];
             }
 
-            bufferIndex = ItoA((int)drawCalls, stringBuffer, bufferIndex);
-            stringBuffer[bufferIndex++] = '/';
-            bufferIndex = ItoA((int)setPassCalls, stringBuffer, bufferIndex);
+            bufferIndex = ItoA((int)drawCalls, buffer, bufferIndex);
+            buffer[bufferIndex++] = '/';
+            bufferIndex = ItoA((int)setPassCalls, buffer, bufferIndex);
 
-            textMesh.text = new string(stringBuffer, 0, bufferIndex);
+            SetText(data, buffer, bufferIndex, Color.white);
         }
 
-        private static void VertexCountToString(char[] stringBuffer, int displayedDecimalDigits, TextMesh textMesh, string prefixString, long vertexCount)
+        private void VertexCountToString(char[] buffer, int displayedDecimalDigits, TextData data, string prefix, long vertexCount)
         {
             int bufferIndex = 0;
 
-            for (int i = 0; i < prefixString.Length; ++i)
+            for (int i = 0; i < prefix.Length; ++i)
             {
-                stringBuffer[bufferIndex++] = prefixString[i];
+                buffer[bufferIndex++] = prefix[i];
             }
 
             float vertexCountK = vertexCount / 1000.0f;
             int vertexIntegerDigits = (int)vertexCountK;
             int vertexFractionalDigits = (int)((vertexCountK - vertexIntegerDigits) * Mathf.Pow(10.0f, displayedDecimalDigits));
 
-            bufferIndex = ItoA(vertexIntegerDigits, stringBuffer, bufferIndex);
+            bufferIndex = ItoA(vertexIntegerDigits, buffer, bufferIndex);
 
             if (displayedDecimalDigits != 0)
             {
-                stringBuffer[bufferIndex++] = '.';
+                buffer[bufferIndex++] = '.';
             }
 
             if (vertexFractionalDigits != 0)
             {
-                bufferIndex = ItoA(vertexFractionalDigits, stringBuffer, bufferIndex);
+                bufferIndex = ItoA(vertexFractionalDigits, buffer, bufferIndex);
             }
             else
             {
                 for (int i = 0; i < displayedDecimalDigits; ++i)
                 {
-                    stringBuffer[bufferIndex++] = '0';
+                    buffer[bufferIndex++] = '0';
                 }
             }
 
-            stringBuffer[bufferIndex++] = 'k';
+            buffer[bufferIndex++] = 'k';
 
-            textMesh.text = new string(stringBuffer, 0, bufferIndex);
+            SetText(data, buffer, bufferIndex, Color.white);
         }
 
         private static int ItoA(int value, char[] stringBuffer, int bufferIndex)
