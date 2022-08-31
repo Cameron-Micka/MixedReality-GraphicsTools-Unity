@@ -71,6 +71,9 @@ namespace Microsoft.MixedReality.Profiling
 
         private static readonly Vector2 defaultWindowRotation = new Vector2(10.0f, 20.0f);
 
+        private static readonly Vector2 textDim = new Vector2(128.0f, 64.0f);
+        private static readonly Vector2 charDim = new Vector2(7.0f, 9.0f);
+
         [Header("Profiler Settings")]
         [SerializeField, Tooltip("Is the profiler currently visible.")]
         private bool isVisible = true;
@@ -183,7 +186,6 @@ namespace Microsoft.MixedReality.Profiling
         private Vector3 windowPosition = Vector3.zero;
         private Quaternion windowRotation = Quaternion.identity;
 
-        private GameObject window;
         private TextData cpuFrameRateText;
         private TextData gpuFrameRateText;
         private TextData drawCallPassText;
@@ -191,10 +193,6 @@ namespace Microsoft.MixedReality.Profiling
         private TextData usedMemoryText;
         private TextData peakMemoryText;
         private TextData limitMemoryText;
-        private Transform usedAnchor;
-        private Transform usedbar;
-        private Transform peakAnchor;
-        private Transform peakBar;
         private Quaternion windowHorizontalRotation;
         private Quaternion windowHorizontalRotationInverse;
         private Quaternion windowVerticalRotation;
@@ -202,10 +200,10 @@ namespace Microsoft.MixedReality.Profiling
 
         private Matrix4x4[] instanceMatrices = new Matrix4x4[instanceCount];
         private Vector4[] instanceColors = new Vector4[instanceCount];
-        private Vector4[] instanceUVScaleOffset = new Vector4[instanceCount];
+        private Vector4[] instanceUVOffsetScaleX = new Vector4[instanceCount];
         private MaterialPropertyBlock instancePropertyBlock;
         private int colorID;
-        private int uvScaleOffsetID;
+        private int uvOffsetScaleXID;
         private int parentMatrixID;
         private int frameCount;
         private System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
@@ -321,27 +319,18 @@ namespace Microsoft.MixedReality.Profiling
             verticesRecorder.Dispose();
             setPassCallsRecorder.Dispose();
             drawCallsRecorder.Dispose();
-
-            Destroy(window);
         }
 
         private void LateUpdate()
         {
-            if (window == null)
-            {
-                return;
-            }
-
             // Update window transformation.
             Transform cameraTransform = Camera.main ? Camera.main.transform : null;
 
-            if (window.activeSelf && cameraTransform != null)
+            if (cameraTransform != null)
             {
                 float t = Time.deltaTime * windowFollowSpeed;
                 windowPosition = Vector3.Lerp(windowPosition, CalculateWindowPosition(cameraTransform), t);
                 windowRotation = Quaternion.Slerp(windowRotation, CalculateWindowRotation(cameraTransform), t);
-                window.transform.position = windowPosition;
-                window.transform.rotation = windowRotation;
             }
 
             // Capture frame timings every frame and read from it depending on the frameSampleRate.
@@ -385,8 +374,6 @@ namespace Microsoft.MixedReality.Profiling
                     SetText(gpuFrameRateText, text, text.Length, color);
                 }
 
-                instancePropertyBlock.SetVectorArray(uvScaleOffsetID, instanceUVScaleOffset); // TODO update when dirty.
-
                 // Update frame colors.
                 for (int i = frameRange - 1; i > 0; --i)
                 {
@@ -406,7 +393,6 @@ namespace Microsoft.MixedReality.Profiling
             }
 
             // Draw frame info.
-            if (window.activeSelf)
             {
                 Matrix4x4 parentLocalToWorldMatrix = Matrix4x4.TRS(windowPosition, windowRotation, Vector3.one * windowScale);
 
@@ -432,10 +418,7 @@ namespace Microsoft.MixedReality.Profiling
 
             if (lastDrawCalls != drawCalls || lastSetPassCalls != setPassCalls)
             {
-                if (window.activeSelf)
-                {
-                    DrawPassCallsToString(stringBuffer, drawCallPassText, drawPassCallString, lastDrawCalls, lastSetPassCalls);
-                }
+                DrawPassCallsToString(stringBuffer, drawCallPassText, drawPassCallString, lastDrawCalls, lastSetPassCalls);
 
                 drawCalls = lastDrawCalls;
                 setPassCalls = lastSetPassCalls;
@@ -445,7 +428,7 @@ namespace Microsoft.MixedReality.Profiling
 
             if (lastVertexCount != vertexCount)
             {
-                if (window.activeSelf && WillDisplayedVertexCountDiffer(lastVertexCount, vertexCount, displayedDecimalDigits))
+                if (WillDisplayedVertexCountDiffer(lastVertexCount, vertexCount, displayedDecimalDigits))
                 {
                     VertexCountToString(stringBuffer, displayedDecimalDigits, verticiesText, verticiesString, lastVertexCount);
                 }
@@ -458,7 +441,7 @@ namespace Microsoft.MixedReality.Profiling
 
             if (limit != limitMemoryUsage)
             {
-                if (window.activeSelf && WillDisplayedMemoryUsageDiffer(limitMemoryUsage, limit, displayedDecimalDigits))
+                if (WillDisplayedMemoryUsageDiffer(limitMemoryUsage, limit, displayedDecimalDigits))
                 {
                     MemoryUsageToString(stringBuffer, displayedDecimalDigits, limitMemoryText, limitMemoryString, limit, Color.white);
                 }
@@ -470,10 +453,11 @@ namespace Microsoft.MixedReality.Profiling
 
             if (usage != memoryUsage)
             {
-                usedAnchor.localScale = new Vector3((float)usage / limitMemoryUsage, usedAnchor.localScale.y, usedAnchor.localScale.z);
-                instanceMatrices[usedInstanceOffset] = window.transform.worldToLocalMatrix * Matrix4x4.TRS(usedbar.position, usedbar.rotation, usedbar.lossyScale);
+                Vector4 offsetScale = instanceUVOffsetScaleX[usedInstanceOffset];
+                offsetScale.z = -1.0f + (float)usage / limitMemoryUsage;
+                instanceUVOffsetScaleX[usedInstanceOffset] = offsetScale;
 
-                if (window.activeSelf && WillDisplayedMemoryUsageDiffer(memoryUsage, usage, displayedDecimalDigits))
+                if (WillDisplayedMemoryUsageDiffer(memoryUsage, usage, displayedDecimalDigits))
                 {
                     MemoryUsageToString(stringBuffer, displayedDecimalDigits, usedMemoryText, usedMemoryString, usage, memoryUsedColor);
                 }
@@ -483,10 +467,11 @@ namespace Microsoft.MixedReality.Profiling
 
             if (memoryUsage > peakMemoryUsage)
             {
-                peakAnchor.localScale = new Vector3((float)memoryUsage / limitMemoryUsage, peakAnchor.localScale.y, peakAnchor.localScale.z);
-                instanceMatrices[peakInstanceOffset] = window.transform.worldToLocalMatrix * Matrix4x4.TRS(peakBar.position, peakBar.rotation, peakBar.lossyScale);
+                Vector4 offsetScale = instanceUVOffsetScaleX[peakInstanceOffset];
+                offsetScale.z = -1.0f + (float)memoryUsage / limitMemoryUsage;
+                instanceUVOffsetScaleX[peakInstanceOffset] = offsetScale;
 
-                if (window.activeSelf && WillDisplayedMemoryUsageDiffer(peakMemoryUsage, memoryUsage, displayedDecimalDigits))
+                if (WillDisplayedMemoryUsageDiffer(peakMemoryUsage, memoryUsage, displayedDecimalDigits))
                 {
                     MemoryUsageToString(stringBuffer, displayedDecimalDigits, peakMemoryText, peakMemoryString, memoryUsage, memoryPeakColor);
                 }
@@ -494,7 +479,7 @@ namespace Microsoft.MixedReality.Profiling
                 peakMemoryUsage = memoryUsage;
             }
 
-            window.SetActive(isVisible);
+            instancePropertyBlock.SetVectorArray(uvOffsetScaleXID, instanceUVOffsetScaleX); // TODO update when dirty.
         }
 
         private void OnValidate()
@@ -546,7 +531,7 @@ namespace Microsoft.MixedReality.Profiling
         private void BuildWindow()
         {
             colorID = Shader.PropertyToID("_Color");
-            uvScaleOffsetID = Shader.PropertyToID("_UVScaleOffset");
+            uvOffsetScaleXID = Shader.PropertyToID("_UVOffsetScaleX");
             parentMatrixID = Shader.PropertyToID("_ParentLocalToWorldMatrix");
 
             // 157 is the bottom right of the font texture.
@@ -555,12 +540,11 @@ namespace Microsoft.MixedReality.Profiling
             Vector3 defaultWindowSize = new Vector3(0.2f, 0.04f, 1.0f);
             float edgeX = defaultWindowSize.x * 0.5f;
 
-            // Build the window root.
+            // Add a window back plate.
             {
-                window = CreateGameObject("VisualProfiler", null);
                 instanceMatrices[windowInstanceOffset] = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, defaultWindowSize);
                 instanceColors[windowInstanceOffset] = baseColor;
-                instanceUVScaleOffset[windowInstanceOffset] = whiteSpaceUV;
+                instanceUVOffsetScaleX[windowInstanceOffset] = whiteSpaceUV;
                 windowHorizontalRotation = Quaternion.AngleAxis(defaultWindowRotation.y, Vector3.right);
                 windowHorizontalRotationInverse = Quaternion.Inverse(windowHorizontalRotation);
                 windowVerticalRotation = Quaternion.AngleAxis(defaultWindowRotation.x, Vector3.up);
@@ -587,7 +571,7 @@ namespace Microsoft.MixedReality.Profiling
                     instanceMatrices[framesInstanceOffset + i] = Matrix4x4.TRS(position, Quaternion.identity, new Vector3(scale.x * 0.8f, scale.y * 0.8f, scale.z));
                     position.x += scale.x;
                     instanceColors[framesInstanceOffset + i] = targetFrameRateColor;
-                    instanceUVScaleOffset[framesInstanceOffset + i] = whiteSpaceUV;
+                    instanceUVOffsetScaleX[framesInstanceOffset + i] = whiteSpaceUV;
                 }
             }
 
@@ -601,34 +585,24 @@ namespace Microsoft.MixedReality.Profiling
             // Add memory usage bars.
             {
                 float height = -0.008f;
-                GameObject limitBar = CreateGameObject("LimitBar", window.transform);
-                Vector3 temp = defaultWindowSize;
-                temp.Scale(new Vector3(0.99f, 0.15f, 1.0f));
-                limitBar.transform.localScale = temp;
-                limitBar.transform.localPosition = new Vector3(0.0f, height, 0.0f);
-                instanceMatrices[limitInstanceOffset] = Matrix4x4.TRS(limitBar.transform.localPosition, limitBar.transform.localRotation, limitBar.transform.localScale);
-                instanceColors[limitInstanceOffset] = memoryLimitColor;
-                instanceUVScaleOffset[limitInstanceOffset] = whiteSpaceUV;
+                Vector3 position = new Vector3(0.0f, height, 0.0f);
+                Vector3 scale = defaultWindowSize;
+                scale.Scale(new Vector3(0.99f, 0.15f, 1.0f));
 
                 {
-                    peakAnchor = CreateAnchor("PeakAnchor", limitBar.transform);
-                    peakBar = CreateGameObject("PeakBar", peakAnchor).transform;
-                    peakBar.localScale = Vector3.one;
-                    peakBar.localPosition = new Vector3(edgeX, 0.0f, 0.0f);
-                    instanceMatrices[peakInstanceOffset] = window.transform.worldToLocalMatrix * Matrix4x4.TRS(peakBar.position, peakBar.rotation, peakBar.lossyScale);
-                    instanceColors[peakInstanceOffset] = memoryUsedColor;
-                    instanceUVScaleOffset[peakInstanceOffset] = whiteSpaceUV;
+                    instanceMatrices[limitInstanceOffset] = Matrix4x4.TRS(position, Quaternion.identity, scale);
+                    instanceColors[limitInstanceOffset] = memoryLimitColor;
+                    instanceUVOffsetScaleX[limitInstanceOffset] = whiteSpaceUV;
                 }
                 {
-                    usedAnchor = CreateAnchor("UsedAnchor", limitBar.transform);
-                    usedbar = CreateGameObject("UsedBar", usedAnchor).transform;
-                    Material material = new Material(foregroundMaterial);
-                    material.renderQueue = material.renderQueue + 1;
-                    usedbar.localScale = Vector3.one;
-                    usedbar.localPosition = new Vector3(edgeX, 0.0f, 0.0f);
-                    instanceMatrices[usedInstanceOffset] = window.transform.worldToLocalMatrix * Matrix4x4.TRS(usedbar.position, usedbar.rotation, usedbar.lossyScale);
-                    instanceColors[usedInstanceOffset] = memoryPeakColor;
-                    instanceUVScaleOffset[usedInstanceOffset] = whiteSpaceUV;
+                    instanceMatrices[peakInstanceOffset] = Matrix4x4.TRS(position, Quaternion.identity, scale);
+                    instanceColors[peakInstanceOffset] = memoryPeakColor;
+                    instanceUVOffsetScaleX[peakInstanceOffset] = whiteSpaceUV;
+                }
+                {
+                    instanceMatrices[usedInstanceOffset] = Matrix4x4.TRS(position, Quaternion.identity, scale);
+                    instanceColors[usedInstanceOffset] = memoryUsedColor;
+                    instanceUVOffsetScaleX[usedInstanceOffset] = whiteSpaceUV;
                 }
             }
 
@@ -643,10 +617,9 @@ namespace Microsoft.MixedReality.Profiling
             // Initialize property block state.
             instancePropertyBlock = new MaterialPropertyBlock();
             instancePropertyBlock.SetVectorArray(colorID, instanceColors);
-            instancePropertyBlock.SetVectorArray(uvScaleOffsetID, instanceUVScaleOffset);
+            instancePropertyBlock.SetVectorArray(uvOffsetScaleXID, instanceUVOffsetScaleX);
             instancePropertyBlock.SetVector("_BaseColor", baseColor);
-
-            window.SetActive(isVisible);
+            instancePropertyBlock.SetVector("_FontScale", new Vector2(charDim.x / textDim.x, charDim.y / textDim.y));
         }
 
         private static char[] ToCharArray(StringBuilder stringBuilder)
@@ -707,7 +680,7 @@ namespace Microsoft.MixedReality.Profiling
                         instanceMatrices[data.Offset + i] = Matrix4x4.TRS(position, Quaternion.identity, scale);
                         instanceColors[data.Offset + i] = color;
                         int charIndex = (data.RightAligned) ? count - i - 1 : i;
-                        instanceUVScaleOffset[data.Offset + i] = CalculateUV(text[charIndex]);
+                        instanceUVOffsetScaleX[data.Offset + i] = CalculateUV(text[charIndex]);
 
                         position += (data.RightAligned) ? Vector3.right * -scale.x : Vector3.right * scale.x;
                     }
@@ -732,18 +705,8 @@ namespace Microsoft.MixedReality.Profiling
 
         private void OnPhraseRecognized(PhraseRecognizedEventArgs args)
         {
-            if (window != null)
-            {
-                if (window.activeSelf)
-                {
-                    window.SetActive(false);
-                }
-                else
-                {
-                    window.SetActive(true);
-                    Refresh();
-                }
-            }
+            IsVisible = !IsVisible;
+            Refresh();
         }
 #endif
 
@@ -977,15 +940,12 @@ namespace Microsoft.MixedReality.Profiling
         private static Vector4 CalculateUV(char c)
         {
             int rowLength = 18;
-            Vector2 textDim = new Vector2(128.0f, 64.0f);
-            Vector2 charDim = new Vector2(7.0f, 9.0f);
 
             int index = c - ' ';
-            float width = charDim.x / textDim.x;
             float height = charDim.y / textDim.y;
             float x = ((index % rowLength) * charDim.x) / textDim.x;
             float y = (Mathf.Floor(index / rowLength) * charDim.y) / textDim.y;
-            return new Vector4(width, height, x, 1.0f - height - y);
+            return new Vector4(x, 1.0f - height - y, 0.0f, 0.0f);
         }
     }
 }
