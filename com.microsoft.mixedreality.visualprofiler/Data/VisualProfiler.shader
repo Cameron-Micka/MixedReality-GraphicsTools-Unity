@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-Shader "Hidden/Profiler"
+Shader "Hidden/Visual Profiler"
 {
     Properties
     {
