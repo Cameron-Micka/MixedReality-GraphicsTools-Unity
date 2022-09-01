@@ -50,7 +50,7 @@ Shader "Hidden/Profiler"
             fixed4 _BaseColor;
             sampler2D _FontTexture;
             float2 _FontScale;
-            float4x4 _ParentLocalToWorldMatrix;
+            float4x4 _WindowLocalToWorldMatrix;
 
             UNITY_INSTANCING_BUFFER_START(Props)
             UNITY_DEFINE_INSTANCED_PROP(fixed4, _Color)
@@ -69,9 +69,9 @@ Shader "Hidden/Profiler"
                 float3 localVertex = v.vertex.xyz;
                 localVertex.x += v.uv.x * uvOffsetScaleX.z;
 
-                // Conver from local to (window) parent to world space.
+                // Convert from window (local) to world space.
                 // We do this in the vertex shader to avoid having to iterate over all instances each frame.
-                o.vertex = mul(UNITY_MATRIX_VP, mul(_ParentLocalToWorldMatrix, mul(unity_ObjectToWorld, float4(localVertex, 1.0))));
+                o.vertex = mul(UNITY_MATRIX_VP, mul(_WindowLocalToWorldMatrix, mul(unity_ObjectToWorld, float4(localVertex, 1.0))));
                 o.color = UNITY_ACCESS_INSTANCED_PROP(Props, _Color);
 
                 // Scale and offset UVs.
