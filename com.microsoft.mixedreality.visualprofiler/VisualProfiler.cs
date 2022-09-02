@@ -555,7 +555,7 @@ namespace Microsoft.MixedReality.Profiling
             instanceColorsDirty = true;
             instanceUVOffsetScaleXDirty = true;
 
-            if (instancePropertyBlock != null)
+            if (instancePropertyBlock != null && material != null && material.mainTexture != null)
             {
                 instancePropertyBlock.SetVector("_BaseColor", baseColor);
                 instancePropertyBlock.SetVector("_FontScale", new Vector2((float)fontCharacterSize.x / material.mainTexture.width,
@@ -596,13 +596,16 @@ namespace Microsoft.MixedReality.Profiling
         {
             characterScale = new Vector3(fontCharacterSize.x * fontScale.x, fontCharacterSize.y * fontScale.y, 1.0f);
 
-            for (char c = ' '; c < characterUVs.Length; ++c)
+            if (material != null && material.mainTexture != null)
             {
-                int index = c - ' ';
-                float height = (float)fontCharacterSize.y / material.mainTexture.height;
-                float x = ((float)(index % fontColumns) * fontCharacterSize.x) / material.mainTexture.width;
-                float y = ((float)(index / fontColumns) * fontCharacterSize.y) / material.mainTexture.height;
-                characterUVs[c] = new Vector4(x, 1.0f - height - y, 0.0f, 0.0f);
+                for (char c = ' '; c < characterUVs.Length; ++c)
+                {
+                    int index = c - ' ';
+                    float height = (float)fontCharacterSize.y / material.mainTexture.height;
+                    float x = ((float)(index % fontColumns) * fontCharacterSize.x) / material.mainTexture.width;
+                    float y = ((float)(index / fontColumns) * fontCharacterSize.y) / material.mainTexture.height;
+                    characterUVs[c] = new Vector4(x, 1.0f - height - y, 0.0f, 0.0f);
+                }
             }
         }
 
