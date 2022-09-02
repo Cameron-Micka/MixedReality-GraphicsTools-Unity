@@ -18,19 +18,16 @@ namespace Microsoft.MixedReality.Profiling
 {
     /// <summary>
     /// 
-    /// ABOUT: The VisualProfiler provides a drop in, single file, solution for viewing 
-    /// your Windows Mixed Reality Unity application's frame rate and memory usage. Missed 
-    /// frames are displayed over time to visually find problem areas. Memory is reported 
-    /// as current, peak and max usage in a bar graph. 
+    /// ABOUT: The VisualProfiler provides a drop in solution for viewing  your Mixed Reality 
+    /// Unity application's frame rate and memory usage. Missed frames are displayed over time to 
+    /// visually find problem areas. Draw calls and vertex counts are displayed to diagnose scene 
+    /// complexity.Memory is reported as current, peak and max usage in a bar graph.
     /// 
     /// USAGE: To use this profiler simply add this script as a component of any GameObject in 
     /// your Unity scene. The profiler is initially active and visible (toggle-able via the 
-    /// IsVisible property), but can be toggled via the enabled/disable voice commands keywords.
-    ///
-    /// NOTE: For improved rendering performance you can optionally include the 
-    /// "Hidden/Instanced-Colored" shader in your project along with the VisualProfiler.
+    /// IsVisible property), but can be toggled via the enabled/disable voice commands keywords (in UWP).
     /// 
-    /// IMPORTANT: Please make sure to add the microphone capability to your app if you plan 
+    /// IMPORTANT: Please make sure to add the microphone capability to your UWP app if you plan 
     /// on using the enable/disable keywords, in Unity under Edit -> Project Settings -> 
     /// Player -> Settings for Windows Store -> Publishing Settings -> Capabilities or in your 
     /// Visual Studio Package.appxmanifest capabilities.
@@ -39,7 +36,7 @@ namespace Microsoft.MixedReality.Profiling
     public class VisualProfiler : MonoBehaviour
     {
         [Header("Profiler Settings")]
-        [SerializeField, Tooltip("Is the profiler currently visible?")]
+        [SerializeField, Tooltip("Is the profiler currently visible? If disabled prevents the profiler from rendering but still allows it to track memory usage.")]
         private bool isVisible = true;
 
         public bool IsVisible
@@ -105,7 +102,7 @@ namespace Microsoft.MixedReality.Profiling
             set { windowFollowSpeed = Mathf.Abs(value); }
         }
 
-        [SerializeField, Tooltip("Voice commands to toggle the profiler on and off.")]
+        [SerializeField, Tooltip("Voice commands to toggle the profiler on and off. (Supported in UWP only.)")]
         private string[] toggleKeyworlds = new string[] { "Profiler", "Toggle Profiler", "Show Profiler", "Hide Profiler" };
 
         [Header("UI Settings")]
@@ -243,9 +240,37 @@ namespace Microsoft.MixedReality.Profiling
         private int uvOffsetScaleXID = 0;
         private int windowLocalToWorldID = 0;
 
-        private void Start()
+        private void OnEnable()
         {
-            Initialize();
+            // Create a quad mesh with artificially large bounds to disable culling for instanced rendering.
+            // TODO: Use shared mesh with normal bounds once Unity allows for more control over instance culling.
+            if (quadMesh == null)
+            {
+                MeshFilter quadMeshFilter = GameObject.CreatePrimitive(PrimitiveType.Quad).GetComponent<MeshFilter>();
+                quadMesh = quadMeshFilter.mesh;
+                quadMesh.bounds = new Bounds(Vector3.zero, Vector3.one * 100.0f);
+
+                Destroy(quadMeshFilter.gameObject);
+            }
+
+            colorID = Shader.PropertyToID("_Color");
+            uvOffsetScaleXID = Shader.PropertyToID("_UVOffsetScaleX");
+            windowLocalToWorldID = Shader.PropertyToID("_WindowLocalToWorldMatrix");
+            instancePropertyBlock = new MaterialPropertyBlock();
+
+            Vector2 defaultWindowRotation = new Vector2(10.0f, 20.0f);
+
+            windowHorizontalRotation = Quaternion.AngleAxis(defaultWindowRotation.y, Vector3.right);
+            windowHorizontalRotationInverse = Quaternion.Inverse(windowHorizontalRotation);
+            windowVerticalRotation = Quaternion.AngleAxis(defaultWindowRotation.x, Vector3.up);
+            windowVerticalRotationInverse = Quaternion.Inverse(windowVerticalRotation);
+
+            drawCallsRecorder = ProfilerRecorder.StartNew(ProfilerCategory.Render, "Draw Calls Count");
+            verticesRecorder = ProfilerRecorder.StartNew(ProfilerCategory.Render, "Vertices Count");
+
+            stopwatch.Reset();
+            stopwatch.Start();
+
             BuildWindow();
 
 #if UNITY_STANDALONE_WIN || UNITY_WSA
@@ -253,13 +278,7 @@ namespace Microsoft.MixedReality.Profiling
 #endif
         }
 
-        private void OnValidate()
-        {
-            Refresh();
-            BuildWindow();
-        }
-
-        private void OnDestroy()
+        private void OnDisable()
         {
 #if UNITY_STANDALONE_WIN || UNITY_WSA
             if (keywordRecognizer.IsRunning)
@@ -269,6 +288,12 @@ namespace Microsoft.MixedReality.Profiling
 #endif
             verticesRecorder.Dispose();
             drawCallsRecorder.Dispose();
+        }
+
+        private void OnValidate()
+        {
+            Refresh();
+            BuildWindow();
         }
 
         private void LateUpdate()
@@ -387,13 +412,17 @@ namespace Microsoft.MixedReality.Profiling
 
             if (usage != memoryUsage)
             {
-                Vector4 offsetScale = instanceUVOffsetScaleX[usedInstanceOffset];
-                offsetScale.z = -1.0f + (float)usage / limitMemoryUsage;
-                instanceUVOffsetScaleX[usedInstanceOffset] = offsetScale;
-
-                if (IsVisible && WillDisplayedMemoryUsageDiffer(memoryUsage, usage, displayedDecimalDigits))
+                if (IsVisible)
                 {
-                    MemoryUsageToString(stringBuffer, displayedDecimalDigits, usedMemoryText, usage, memoryUsedColor);
+                    Vector4 offsetScale = instanceUVOffsetScaleX[usedInstanceOffset];
+                    offsetScale.z = -1.0f + (float)usage / limitMemoryUsage;
+                    instanceUVOffsetScaleX[usedInstanceOffset] = offsetScale;
+                    instanceUVOffsetScaleXDirty = true;
+
+                    if (WillDisplayedMemoryUsageDiffer(memoryUsage, usage, displayedDecimalDigits))
+                    {
+                        MemoryUsageToString(stringBuffer, displayedDecimalDigits, usedMemoryText, usage, memoryUsedColor);
+                    }
                 }
 
                 memoryUsage = usage;
@@ -401,13 +430,17 @@ namespace Microsoft.MixedReality.Profiling
 
             if (memoryUsage > peakMemoryUsage)
             {
-                Vector4 offsetScale = instanceUVOffsetScaleX[peakInstanceOffset];
-                offsetScale.z = -1.0f + (float)memoryUsage / limitMemoryUsage;
-                instanceUVOffsetScaleX[peakInstanceOffset] = offsetScale;
-
-                if (IsVisible && WillDisplayedMemoryUsageDiffer(peakMemoryUsage, memoryUsage, displayedDecimalDigits))
+                if (IsVisible)
                 {
-                    MemoryUsageToString(stringBuffer, displayedDecimalDigits, peakMemoryText, memoryUsage, memoryPeakColor);
+                    Vector4 offsetScale = instanceUVOffsetScaleX[peakInstanceOffset];
+                    offsetScale.z = -1.0f + (float)memoryUsage / limitMemoryUsage;
+                    instanceUVOffsetScaleX[peakInstanceOffset] = offsetScale;
+                    instanceUVOffsetScaleXDirty = true;
+
+                    if (WillDisplayedMemoryUsageDiffer(peakMemoryUsage, memoryUsage, displayedDecimalDigits))
+                    {
+                        MemoryUsageToString(stringBuffer, displayedDecimalDigits, peakMemoryText, memoryUsage, memoryPeakColor);
+                    }
                 }
 
                 peakMemoryUsage = memoryUsage;
@@ -436,37 +469,6 @@ namespace Microsoft.MixedReality.Profiling
                     Graphics.DrawMeshInstanced(quadMesh, 0, material, instanceMatrices, instanceMatrices.Length, instancePropertyBlock, UnityEngine.Rendering.ShadowCastingMode.Off, false);
                 }
             }
-        }
-
-        private void Initialize()
-        {
-            // Create a quad mesh with artificially large bounds to disable culling for instanced rendering.
-            // TODO: Use shared mesh with normal bounds once Unity allows for more control over instance culling.
-            {
-                MeshFilter quadMeshFilter = GameObject.CreatePrimitive(PrimitiveType.Quad).GetComponent<MeshFilter>();
-                quadMesh = quadMeshFilter.mesh;
-                quadMesh.bounds = new Bounds(Vector3.zero, Vector3.one * 100.0f);
-
-                Destroy(quadMeshFilter.gameObject);
-            }
-
-            colorID = Shader.PropertyToID("_Color");
-            uvOffsetScaleXID = Shader.PropertyToID("_UVOffsetScaleX");
-            windowLocalToWorldID = Shader.PropertyToID("_WindowLocalToWorldMatrix");
-            instancePropertyBlock = new MaterialPropertyBlock();
-
-            Vector2 defaultWindowRotation = new Vector2(10.0f, 20.0f);
-
-            windowHorizontalRotation = Quaternion.AngleAxis(defaultWindowRotation.y, Vector3.right);
-            windowHorizontalRotationInverse = Quaternion.Inverse(windowHorizontalRotation);
-            windowVerticalRotation = Quaternion.AngleAxis(defaultWindowRotation.x, Vector3.up);
-            windowVerticalRotationInverse = Quaternion.Inverse(windowVerticalRotation);
-
-            drawCallsRecorder = ProfilerRecorder.StartNew(ProfilerCategory.Render, "Draw Calls Count");
-            verticesRecorder = ProfilerRecorder.StartNew(ProfilerCategory.Render, "Vertices Count");
-
-            stopwatch.Reset();
-            stopwatch.Start();
         }
 
         private void BuildWindow()
@@ -694,7 +696,7 @@ namespace Microsoft.MixedReality.Profiling
             Vector4 colorVector = color;
             Vector4 spaceUV = characterUVs[' '];
 
-            // Only loop though characters we need to touch.
+            // Only loop though characters we need to update.
             int charactersToProcess = Mathf.Min(Mathf.Max(count, data.LastProcessed), maxStringLength);
 
             for (int i = 0; i < charactersToProcess; ++i)
