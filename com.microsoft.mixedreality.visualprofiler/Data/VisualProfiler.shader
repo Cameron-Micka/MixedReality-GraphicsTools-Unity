@@ -5,9 +5,9 @@ Shader "Hidden/Visual Profiler"
 {
     Properties
     {
-        _Color("Color", Color) = (1.0, 1.0, 1.0, 1.0)
+        [MainColor] _Color("Color", Color) = (1.0, 1.0, 1.0, 1.0)
         _BaseColor("Base Color", Color) = (0.0, 0.0, 0.0, 1.0)
-        _FontTexture("Font", 2D) = "black" {}
+        [MainTexture] _FontTexture("Font", 2D) = "black" {}
     }
 
     SubShader

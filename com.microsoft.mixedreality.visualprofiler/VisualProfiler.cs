@@ -133,6 +133,16 @@ namespace Microsoft.MixedReality.Profiling
         [SerializeField, Tooltip("The color to display for the platforms memory usage limit.")]
         private Color memoryLimitColor = new Color(50 / 256.0f, 50 / 256.0f, 50 / 256.0f, 1.0f);
 
+        [Header("Font Settings")]
+        [SerializeField, Tooltip("The width and height of a mono spaced character in the font texture (in pixels).")]
+        private Vector2Int fontCharacterSize = new Vector2Int(16, 30);
+
+        [SerializeField, Tooltip("The x and y scale to render a character at.")]
+        private Vector2 fontScale = new Vector2(0.00023f, 0.00028f);
+
+        [SerializeField, Min(1), Tooltip("How many characters are in a row of the font texture.")]
+        private int fontColumns = 32;
+
         private class TextData
         {
             public Vector3 Position;
@@ -179,15 +189,11 @@ namespace Microsoft.MixedReality.Profiling
         private const string peakMemoryPrefix = "Peak: ";
         private const string limitMemoryPrefix = "Limit: ";
 
-        private static readonly Vector2 defaultWindowRotation = new Vector2(10.0f, 20.0f);
-        private static readonly Vector2Int fontTextureSize = new Vector2Int(128, 64);
-        private static readonly Vector2Int fontCharacterSize = new Vector2Int(7, 9);
-        private static readonly Vector2Int fontRowsColumns = new Vector2Int(7, 18);
-
         // Pre computed state.
         private char[][] frameRateStrings = new char[maxTargetFrameRate + 1][];
         private char[][] gpuFrameRateStrings = new char[maxTargetFrameRate + 1][];
         private Vector4[] characterUVs = new Vector4[128];
+        private Vector3 characterScale;
 
         // State.
         private Vector3 windowPosition = Vector3.zero;
@@ -247,6 +253,12 @@ namespace Microsoft.MixedReality.Profiling
 #if UNITY_STANDALONE_WIN || UNITY_WSA
             BuildKeywordRecognizer();
 #endif
+        }
+
+        private void OnValidate()
+        {
+            Refresh();
+            BuildWindow();
         }
 
         private void OnDestroy()
@@ -426,12 +438,6 @@ namespace Microsoft.MixedReality.Profiling
             }
         }
 
-        private void OnValidate()
-        {
-            Refresh();
-            BuildWindow();
-        }
-
         private void Initialize()
         {
             // Create a quad mesh with artificially large bounds to disable culling for instanced rendering.
@@ -448,6 +454,8 @@ namespace Microsoft.MixedReality.Profiling
             uvOffsetScaleXID = Shader.PropertyToID("_UVOffsetScaleX");
             windowLocalToWorldID = Shader.PropertyToID("_WindowLocalToWorldMatrix");
             instancePropertyBlock = new MaterialPropertyBlock();
+
+            Vector2 defaultWindowRotation = new Vector2(10.0f, 20.0f);
 
             windowHorizontalRotation = Quaternion.AngleAxis(defaultWindowRotation.y, Vector3.right);
             windowHorizontalRotationInverse = Quaternion.Inverse(windowHorizontalRotation);
@@ -482,14 +490,14 @@ namespace Microsoft.MixedReality.Profiling
 
             // Add frame rate text.
             {
-                float height = 0.019f;
+                float height = 0.02f;
                 cpuFrameRateText = new TextData(new Vector3(-edgeX, height, 0.0f), false, cpuframeRateTextOffset);
                 gpuFrameRateText = new TextData(new Vector3(edgeX, height, 0.0f), true, gpuframeRateTextOffset);
             }
 
             // Add frame rate indicators.
             {
-                float height = 0.009f;
+                float height = 0.008f;
                 float size = (1.0f / frameRange) * defaultWindowSize.x;
                 Vector3 scale = new Vector3(size, size, 1.0f);
                 Vector3 position = new Vector3(-defaultWindowSize.x * 0.5f, height, 0.0f);
@@ -506,14 +514,14 @@ namespace Microsoft.MixedReality.Profiling
 
             // Add scene statistics text.
             {
-                float height = 0.003f;
+                float height = 0.0045f;
                 drawCallPassText = new TextData(new Vector3(-edgeX, height, 0.0f), false, drawCallPassTextOffset);
                 verticiesText = new TextData(new Vector3(edgeX, height, 0.0f), true, verticiesTextOffset);
             }
 
             // Add memory usage bars.
             {
-                float height = -0.008f;
+                float height = -0.0075f;
                 Vector3 position = new Vector3(0.0f, height, 0.0f);
                 Vector3 scale = defaultWindowSize;
                 scale.Scale(new Vector3(0.99f, 0.15f, 1.0f));
@@ -537,7 +545,7 @@ namespace Microsoft.MixedReality.Profiling
 
             // Add memory usage text.
             {
-                float height = -0.013f;
+                float height = -0.011f;
                 usedMemoryText = new TextData(new Vector3(-edgeX, height, 0.0f), false, usedMemoryTextOffset);
                 peakMemoryText = new TextData(new Vector3(-0.03f, height, 0.0f), false, peakMemoryTextOffset);
                 limitMemoryText = new TextData(new Vector3(edgeX, height, 0.0f), true, limitMemoryTextOffset);
@@ -550,8 +558,8 @@ namespace Microsoft.MixedReality.Profiling
             if (instancePropertyBlock != null)
             {
                 instancePropertyBlock.SetVector("_BaseColor", baseColor);
-                instancePropertyBlock.SetVector("_FontScale", new Vector2((float)fontCharacterSize.x / fontTextureSize.x,
-                                                                          (float)fontCharacterSize.y / fontTextureSize.y));
+                instancePropertyBlock.SetVector("_FontScale", new Vector2((float)fontCharacterSize.x / material.mainTexture.width,
+                                                                          (float)fontCharacterSize.y / material.mainTexture.height));
             }
         }
 
@@ -586,12 +594,14 @@ namespace Microsoft.MixedReality.Profiling
 
         private void BuildCharacterUVs()
         {
+            characterScale = new Vector3(fontCharacterSize.x * fontScale.x, fontCharacterSize.y * fontScale.y, 1.0f);
+
             for (char c = ' '; c < characterUVs.Length; ++c)
             {
                 int index = c - ' ';
-                float height = (float)fontCharacterSize.y / fontTextureSize.y;
-                float x = ((float)(index % fontRowsColumns.y) * fontCharacterSize.x) / fontTextureSize.x;
-                float y = ((float)(index / fontRowsColumns.y) * fontCharacterSize.y) / fontTextureSize.y;
+                float height = (float)fontCharacterSize.y / material.mainTexture.height;
+                float x = ((float)(index % fontColumns) * fontCharacterSize.x) / material.mainTexture.width;
+                float y = ((float)(index / fontColumns) * fontCharacterSize.y) / material.mainTexture.height;
                 characterUVs[c] = new Vector4(x, 1.0f - height - y, 0.0f, 0.0f);
             }
         }
@@ -649,21 +659,20 @@ namespace Microsoft.MixedReality.Profiling
 
         void SetText(TextData data, char[] text, int count, Color color)
         {
-            Vector3 scale = new Vector3(fontCharacterSize.x, fontCharacterSize.y, 1.0f) * 0.00061f;
             Vector3 position = data.Position;
-            position -= Vector3.up * scale.y * 0.5f;
-            position += (data.RightAligned) ? Vector3.right * -scale.x * 0.5f : Vector3.right * scale.x * 0.5f;
+            position -= Vector3.up * characterScale.y * 0.5f;
+            position += (data.RightAligned) ? Vector3.right * -characterScale.x * 0.5f : Vector3.right * characterScale.x * 0.5f;
 
             for (int i = 0; i < maxStringLength; ++i)
             {
                 if (i < count)
                 {
-                    instanceMatrices[data.Offset + i] = Matrix4x4.TRS(position, Quaternion.identity, scale);
+                    instanceMatrices[data.Offset + i] = Matrix4x4.TRS(position, Quaternion.identity, characterScale);
                     instanceColors[data.Offset + i] = color;
                     int charIndex = (data.RightAligned) ? count - i - 1 : i;
                     instanceUVOffsetScaleX[data.Offset + i] = characterUVs[text[charIndex]];
 
-                    position += (data.RightAligned) ? Vector3.right * -scale.x : Vector3.right * scale.x;
+                    position += (data.RightAligned) ? Vector3.right * -characterScale.x : Vector3.right * characterScale.x;
                 }
                 else
                 {
