@@ -102,6 +102,15 @@ namespace Microsoft.MixedReality.Profiling
             set { windowFollowSpeed = Mathf.Abs(value); }
         }
 
+        [SerializeField, Tooltip("Should the window snap to location rather than interpolate?")]
+        private bool snapWindow = false;
+
+        public bool SnapWindow
+        {
+            get { return snapWindow; }
+            set { snapWindow = value; }
+        }
+
         [SerializeField, Tooltip("Voice commands to toggle the profiler on and off. (Supported in UWP only.)")]
         private string[] toggleKeyworlds = new string[] { "Profiler", "Toggle Profiler", "Show Profiler", "Hide Profiler" };
 
@@ -253,7 +262,7 @@ namespace Microsoft.MixedReality.Profiling
             {
                 MeshFilter quadMeshFilter = GameObject.CreatePrimitive(PrimitiveType.Quad).GetComponent<MeshFilter>();
                 quadMesh = quadMeshFilter.mesh;
-                quadMesh.bounds = new Bounds(Vector3.zero, Vector3.one * 100.0f);
+                quadMesh.bounds = new Bounds(Vector3.zero, Vector3.one * float.MaxValue);
 
                 Destroy(quadMeshFilter.gameObject);
             }
@@ -310,10 +319,21 @@ namespace Microsoft.MixedReality.Profiling
 
                 if (cameraTransform != null)
                 {
-                    float t = Time.deltaTime * windowFollowSpeed;
-                    windowPosition = Vector3.Lerp(windowPosition, CalculateWindowPosition(cameraTransform), t);
-                    // Lerp rather than slerp for speed over quality.
-                    windowRotation = Quaternion.Lerp(windowRotation, CalculateWindowRotation(cameraTransform), t);
+                    Vector3 targetPosition = CalculateWindowPosition(cameraTransform);
+                    Quaternion targetRotaton = CalculateWindowRotation(cameraTransform);
+
+                    if (snapWindow)
+                    {
+                        windowPosition = targetPosition;
+                        windowRotation = targetRotaton;
+                    }
+                    else
+                    {
+                        float t = Time.deltaTime * windowFollowSpeed;
+                        windowPosition = Vector3.Lerp(windowPosition, CalculateWindowPosition(cameraTransform), t);
+                        // Lerp rather than slerp for speed over quality.
+                        windowRotation = Quaternion.Lerp(windowRotation, CalculateWindowRotation(cameraTransform), t);
+                    }
                 }
 
                 // Capture frame timings every frame and read from it depending on the frameSampleRate.
