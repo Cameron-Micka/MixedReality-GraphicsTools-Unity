@@ -286,7 +286,7 @@ namespace Microsoft.MixedReality.Profiling
         private void OnDisable()
         {
 #if UNITY_STANDALONE_WIN || UNITY_WSA
-            if (keywordRecognizer.IsRunning)
+            if (keywordRecognizer != null && keywordRecognizer.IsRunning)
             {
                 keywordRecognizer.Stop();
             }
