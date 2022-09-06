@@ -113,7 +113,7 @@ namespace Microsoft.MixedReality.Profiling
         private int displayedDecimalDigits = 1;
 
         [SerializeField, Tooltip("The color of the window backplate.")]
-        private Color baseColor = new Color(20 / 256.0f, 20 / 256.0f, 20 / 256.0f, 1.0f);
+        private Color baseColor = new Color(50 / 256.0f, 50 / 256.0f, 50 / 256.0f, 1.0f);
 
         [SerializeField, Tooltip("The color to display on frames which meet or exceed the target frame rate.")]
         private Color targetFrameRateColor = new Color(127 / 256.0f, 186 / 256.0f, 0 / 256.0f, 1.0f);
@@ -128,7 +128,7 @@ namespace Microsoft.MixedReality.Profiling
         private Color memoryPeakColor = new Color(255 / 256.0f, 185 / 256.0f, 0 / 256.0f, 1.0f);
 
         [SerializeField, Tooltip("The color to display for the platforms memory usage limit.")]
-        private Color memoryLimitColor = new Color(50 / 256.0f, 50 / 256.0f, 50 / 256.0f, 1.0f);
+        private Color memoryLimitColor = new Color(100 / 256.0f, 100 / 256.0f, 100 / 256.0f, 1.0f);
 
         [Header("Font Settings")]
         [SerializeField, Tooltip("The width and height of a mono spaced character in the font texture (in pixels).")]
@@ -160,7 +160,7 @@ namespace Microsoft.MixedReality.Profiling
 
         // Constants.
         private const int maxStringLength = 17;
-        private const int maxTargetFrameRate = 120;
+        private const int maxTargetFrameRate = 240;
         private const int maxFrameTimings = 128;
         private const int frameRange = 30;
 
@@ -242,6 +242,11 @@ namespace Microsoft.MixedReality.Profiling
 
         private void OnEnable()
         {
+            if (material == null)
+            {
+                Debug.LogError("The VisualProfiler is missing a material and will not display.");
+            }
+
             // Create a quad mesh with artificially large bounds to disable culling for instanced rendering.
             // TODO: Use shared mesh with normal bounds once Unity allows for more control over instance culling.
             if (quadMesh == null)
@@ -591,10 +596,24 @@ namespace Microsoft.MixedReality.Profiling
                 }
 
                 stringBuilder.AppendFormat("{0}fps ({1}ms)", frame, ms);
+
+                if (i == (frameRateStrings.Length - 1))
+                {
+                    stringBuilder.Append('+');
+                }
+
                 frameRateStrings[i] = ToCharArray(stringBuilder);
+
                 stringBuilder.Length = 0;
                 stringBuilder.AppendFormat("GPU: {1}ms", frame, ms);
+
+                if (i == (frameRateStrings.Length - 1))
+                {
+                    stringBuilder.Append('+');
+                }
+
                 gpuFrameRateStrings[i] = ToCharArray(stringBuilder);
+
                 milisecondStringBuilder.Length = 0;
                 stringBuilder.Length = 0;
             }
@@ -716,10 +735,13 @@ namespace Microsoft.MixedReality.Profiling
 
         private void BuildKeywordRecognizer()
         {
-            keywordRecognizer = new KeywordRecognizer(toggleKeyworlds);
-            keywordRecognizer.OnPhraseRecognized += OnPhraseRecognized;
+            if (toggleKeyworlds.Length != 0)
+            {
+                keywordRecognizer = new KeywordRecognizer(toggleKeyworlds);
+                keywordRecognizer.OnPhraseRecognized += OnPhraseRecognized;
 
-            keywordRecognizer.Start();
+                keywordRecognizer.Start();
+            }
         }
 
         private void OnPhraseRecognized(PhraseRecognizedEventArgs args)
@@ -731,6 +753,7 @@ namespace Microsoft.MixedReality.Profiling
 
         private void MemoryUsageToString(char[] buffer, int displayedDecimalDigits, TextData data, ulong memoryUsage, Color color)
         {
+            
             bool usingGigabytes = false;
             float usage = ConvertBytesToMegabytes(memoryUsage);
 

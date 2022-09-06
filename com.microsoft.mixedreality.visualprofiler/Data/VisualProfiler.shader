@@ -16,6 +16,7 @@ Shader "Hidden/Visual Profiler"
         {
             Name "Main"
             Tags{ "RenderType" = "Opaque" }
+            Blend Off
             ZWrite On
             ZTest Always
             Cull Off
@@ -42,7 +43,8 @@ Shader "Hidden/Visual Profiler"
             struct v2f
             {
                 float4 vertex : SV_POSITION;
-                fixed4 color : COLOR0;
+                fixed3 color : COLOR0;
+                fixed3 baseColor : COLOR1;
                 float2 uv : TEXCOORD0;
                 UNITY_VERTEX_OUTPUT_STEREO
             };
@@ -72,7 +74,15 @@ Shader "Hidden/Visual Profiler"
                 // Convert from window (local) to world space.
                 // We do this in the vertex shader to avoid having to iterate over all instances each frame.
                 o.vertex = mul(UNITY_MATRIX_VP, mul(_WindowLocalToWorldMatrix, mul(unity_ObjectToWorld, float4(localVertex, 1.0))));
-                o.color = UNITY_ACCESS_INSTANCED_PROP(Props, _Color);
+                
+                // MaterialPropertyBlocks do not have a SetColorArray method, so we need to do color space conversions ourselves.
+#if defined(UNITY_COLORSPACE_GAMMA)
+                o.color = UNITY_ACCESS_INSTANCED_PROP(Props, _Color).rgb;
+                o.baseColor = _BaseColor.rgb;
+#else
+                o.color = GammaToLinearSpace(UNITY_ACCESS_INSTANCED_PROP(Props, _Color).rgb);
+                o.baseColor = GammaToLinearSpace(_BaseColor.rgb);
+#endif
 
                 // Scale and offset UVs.
                 o.uv = (v.uv * _FontScale) + uvOffsetScaleX.xy;
@@ -84,7 +94,7 @@ Shader "Hidden/Visual Profiler"
             {
                 fixed4 font = tex2D(_FontTexture, i.uv);
                 fixed alpha = font.r;
-                return fixed4((_BaseColor.rgb * (1.0 - alpha)) + (font.rgb * i.color.rgb * alpha), 1.0);
+                return fixed4((i.baseColor * (1.0 - alpha)) + (font.rgb * i.color * alpha), 1.0);
             }
 
             ENDCG
