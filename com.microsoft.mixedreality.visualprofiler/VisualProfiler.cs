@@ -21,11 +21,11 @@ namespace Microsoft.MixedReality.Profiling
     /// ABOUT: The VisualProfiler provides a drop in solution for viewing  your Mixed Reality 
     /// Unity application's frame rate and memory usage. Missed frames are displayed over time to 
     /// visually find problem areas. Draw calls and vertex counts are displayed to diagnose scene 
-    /// complexity.Memory is reported as current, peak and max usage in a bar graph.
+    /// complexity. Memory is reported as current, peak and max usage in a bar graph.
     /// 
     /// USAGE: To use this profiler simply add this script as a component of any GameObject in 
     /// your Unity scene. The profiler is initially active and visible (toggle-able via the 
-    /// IsVisible property), but can be toggled via the enabled/disable voice commands keywords (in UWP).
+    /// IsVisible property), but can be toggled via the enabled/disable voice commands keywords (in Windows/UWP).
     /// 
     /// IMPORTANT: Please make sure to add the microphone capability to your UWP app if you plan 
     /// on using the enable/disable keywords, in Unity under Edit -> Project Settings -> 
