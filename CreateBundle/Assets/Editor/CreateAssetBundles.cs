@@ -4,7 +4,7 @@ using System.IO;
 
 public class CreateAssetBundles
 {
-    [MenuItem("Assets/Build AssetBundles"]
+    [MenuItem("Assets/Build Asset Bundles")]
     static void BuildAllAssetBundles()
     {
         string assetBundleDirectory = "Assets/StreamingAssets";
