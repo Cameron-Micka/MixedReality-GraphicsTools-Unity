@@ -39,11 +39,11 @@ struct Varyings
 #if defined(_UV)
     float2 uv : TEXCOORD0;
 #endif
-#if defined(_BLUR_TEXTURE) || defined(_BLUR_TEXTURE_2)
+//#if defined(_BLUR_TEXTURE) || defined(_BLUR_TEXTURE_2)
     float4 uvScreen : TEXCOORD4;
-#elif defined(_BLUR_TEXTURE_PREBAKED_BACKGROUND)
-    float2 uvBackgroundRect : TEXCOORD4;
-#endif
+//#elif defined(_BLUR_TEXTURE_PREBAKED_BACKGROUND)
+//    float2 uvBackgroundRect : TEXCOORD4;
+//#endif
 #if defined(LIGHTMAP_ON)
     float2 lightMapUV : TEXCOORD1;
 #endif

@@ -121,11 +121,11 @@
 #undef _UV
 #endif
 
-#if defined(_BLUR_TEXTURE) || defined(_BLUR_TEXTURE_2)
+//#if defined(_BLUR_TEXTURE) || defined(_BLUR_TEXTURE_2)
 #define _UV_SCREEN
-#else
-#undef _UV_SCREEN
-#endif
+//#else
+//#undef _UV_SCREEN
+//#endif
 
 #if defined(_URP)
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
@@ -330,6 +330,7 @@ Varyings VertexStage(Attributes input)
                                   _IridescenceIntensity);
 #endif
  #elif defined(_GRADIENT_LINEAR)
+    output.uv = output.uvScreen.xy / output.uvScreen.w;
     // Reference: https://patrickbrosset.medium.com/do-you-really-understand-css-linear-gradients-631d9a895caf
     // Translate the angle from degress to radians and default pointing up along the unit circle.
     float angle = _GradientAngle * GT_DEGREES_TO_RADIANS;
