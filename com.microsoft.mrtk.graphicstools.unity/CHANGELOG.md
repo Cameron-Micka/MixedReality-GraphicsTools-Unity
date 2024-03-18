@@ -4,6 +4,12 @@ All notable changes to this package will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.7.0] - 2024-03-18
+
+### Changed
+
+- Update to 2021.3.26f1 LTS
+
 ## [0.6.9] - 2024-02-27
 
 ### Changed
